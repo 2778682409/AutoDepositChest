@@ -11,7 +11,8 @@ namespace AutoDepositChest
 {
     public class ModEntry : Mod
     {
-        private Chest boundChest = null;
+        // 改成箱子列表，支持绑定多个箱子
+        private List<Chest> boundChests = new List<Chest>();
         private SButton bindKey = SButton.F8;
         private List<Item> lastInventory = new List<Item>();
 
@@ -29,15 +30,17 @@ namespace AutoDepositChest
             var tile = Game1.player.GetGrabTile();
             if (Game1.currentLocation.Objects.TryGetValue(tile, out var obj) && obj is Chest chest)
             {
-                if (boundChest == chest)
+                if (boundChests.Contains(chest))
                 {
-                    boundChest = null;
+                    // 如果已经绑定，则解绑
+                    boundChests.Remove(chest);
                     Game1.addHUDMessage(new HUDMessage("已解绑箱子"));
                 }
                 else
                 {
-                    boundChest = chest;
-                    Game1.addHUDMessage(new HUDMessage("已绑定箱子"));
+                    // 否则添加绑定
+                    boundChests.Add(chest);
+                    Game1.addHUDMessage(new HUDMessage($"已绑定箱子（共 {boundChests.Count} 个）"));
                 }
 
                 RefreshSnapshot();
@@ -50,17 +53,13 @@ namespace AutoDepositChest
 
         private void OnMenuChanged(object sender, MenuChangedEventArgs e)
         {
-            // 当任何菜单（包括箱子界面）打开或关闭时，刷新快照
-            // 这样玩家从箱子里取出的物品不会被误判为新拾取
             RefreshSnapshot();
         }
 
         private void OnUpdateTicked(object sender, UpdateTickedEventArgs e)
         {
-            if (boundChest == null) return;
+            if (boundChests.Count == 0) return;
             if (!Context.IsWorldReady) return;
-
-            // 如果玩家正在打开任何菜单（比如箱子界面），暂停自动存入
             if (Game1.activeClickableMenu != null) return;
 
             var player = Game1.player;
@@ -74,11 +73,19 @@ namespace AutoDepositChest
                 {
                     player.Items[i] = null;
 
-                    var remaining = boundChest.addItem(item);
+                    // 依次尝试存入每个绑定的箱子
+                    Item remaining = item;
+                    foreach (var chest in boundChests)
+                    {
+                        if (remaining == null || remaining.Stack <= 0) break;
+                        remaining = chest.addItem(remaining);
+                    }
+
+                    // 如果所有箱子都满了，把剩余的还给玩家
                     if (remaining != null && remaining.Stack > 0)
                     {
                         player.addItemToInventory(remaining);
-                        Game1.addHUDMessage(new HUDMessage("箱子已满，部分物品未存入"));
+                        Game1.addHUDMessage(new HUDMessage("所有绑定箱子已满，部分物品未存入"));
                     }
                 }
             }
