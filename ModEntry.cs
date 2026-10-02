@@ -12,21 +12,19 @@ namespace AutoDepositChest
     public class ModEntry : Mod
     {
         private Chest boundChest = null;
-        private KeybindList bindKey = KeybindList.Parse("F8");
+        // 改用最基础的 SButton 写法，兼容性更好
+        private SButton bindKey = SButton.F8;
 
         public override void Entry(IModHelper helper)
         {
-            var config = helper.ReadConfig<ModConfig>();
-            if (config.BindKey != null)
-                bindKey = config.BindKey;
-
+            // 注册事件
             helper.Events.Input.ButtonPressed += OnButtonPressed;
             helper.Events.Player.InventoryChanged += OnInventoryChanged;
         }
 
         private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
         {
-            if (!bindKey.JustPressed()) return;
+            if (e.Button != bindKey) return;
 
             var tile = Game1.player.GetGrabTile();
             if (Game1.currentLocation.Objects.TryGetValue(tile, out var obj) && obj is Chest chest)
@@ -60,10 +58,8 @@ namespace AutoDepositChest
                 if (item is Tool) continue;
                 if (item.Stack <= 0) continue;
 
-                // 尝试存入箱子，addItem 会修改 item.Stack
                 var remaining = boundChest.addItem(item);
 
-                // 如果 item.Stack 变为 0，说明已全部存入，从玩家背包移除
                 if (item.Stack <= 0)
                 {
                     for (int i = 0; i < Game1.player.Items.Count; i++)
@@ -76,17 +72,11 @@ namespace AutoDepositChest
                     }
                 }
 
-                // 如果还有剩余，说明箱子满了
                 if (remaining != null && remaining.Stack > 0)
                 {
                     Game1.addHUDMessage(new HUDMessage("箱子已满，部分物品未存入"));
                 }
             }
         }
-    }
-
-    public class ModConfig
-    {
-        public KeybindList BindKey { get; set; } = KeybindList.Parse("F8");
     }
 }
