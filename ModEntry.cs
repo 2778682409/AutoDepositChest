@@ -12,12 +12,10 @@ namespace AutoDepositChest
     public class ModEntry : Mod
     {
         private Chest boundChest = null;
-        // 改用最基础的 SButton 写法，兼容性更好
         private SButton bindKey = SButton.F8;
 
         public override void Entry(IModHelper helper)
         {
-            // 注册事件
             helper.Events.Input.ButtonPressed += OnButtonPressed;
             helper.Events.Player.InventoryChanged += OnInventoryChanged;
         }
@@ -33,13 +31,11 @@ namespace AutoDepositChest
                 {
                     boundChest = null;
                     Game1.addHUDMessage(new HUDMessage("已解绑箱子"));
-                    Monitor.Log("已解绑箱子。", LogLevel.Info);
                 }
                 else
                 {
                     boundChest = chest;
                     Game1.addHUDMessage(new HUDMessage("已绑定箱子"));
-                    Monitor.Log("已绑定箱子。", LogLevel.Info);
                 }
             }
             else
@@ -53,27 +49,29 @@ namespace AutoDepositChest
             if (boundChest == null) return;
             if (!e.IsLocalPlayer) return;
 
+            // 从背包里找出新添加的物品，先移除，再存入箱子
             foreach (var item in e.Added.ToList())
             {
                 if (item is Tool) continue;
                 if (item.Stack <= 0) continue;
 
-                var remaining = boundChest.addItem(item);
-
-                if (item.Stack <= 0)
+                // 在背包里找到这个物品并取出
+                for (int i = 0; i < Game1.player.Items.Count; i++)
                 {
-                    for (int i = 0; i < Game1.player.Items.Count; i++)
+                    if (Game1.player.Items[i] == item)
                     {
-                        if (Game1.player.Items[i] == item)
-                        {
-                            Game1.player.Items[i] = null;
-                            break;
-                        }
+                        Game1.player.Items[i] = null; // 从背包移除
+                        break;
                     }
                 }
 
+                // 存入箱子
+                var remaining = boundChest.addItem(item);
+
+                // 如果箱子满了，把剩余的还给玩家
                 if (remaining != null && remaining.Stack > 0)
                 {
+                    Game1.player.addItemToInventory(remaining);
                     Game1.addHUDMessage(new HUDMessage("箱子已满，部分物品未存入"));
                 }
             }
