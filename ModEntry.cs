@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
@@ -12,12 +13,13 @@ namespace AutoDepositChest
     {
         private Chest boundChest = null;
         private SButton bindKey = SButton.F8;
+        // 记录上一次背包里物品的快照
+        private List<Item> lastInventory = new List<Item>();
 
         public override void Entry(IModHelper helper)
         {
             helper.Events.Input.ButtonPressed += OnButtonPressed;
-            // 改用 ItemReceived 事件，在物品进入背包前拦截
-            helper.Events.Player.ItemReceived += OnItemReceived;
+            helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         }
 
         private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
@@ -44,19 +46,40 @@ namespace AutoDepositChest
             }
         }
 
-        private void OnItemReceived(object sender, ItemReceivedEventArgs e)
+        private void OnUpdateTicked(object sender, UpdateTickedEventArgs e)
         {
             if (boundChest == null) return;
-            if (e.Item is Tool) return;
+            if (!Context.IsWorldReady) return;
 
-            // 先把物品存入箱子
-            var remaining = boundChest.addItem(e.Item);
-
-            // 如果箱子满了，剩余物品会回到背包
-            if (remaining != null && remaining.Stack > 0)
+            var player = Game1.player;
+            // 遍历当前背包
+            for (int i = 0; i < player.Items.Count; i++)
             {
-                Game1.player.addItemToInventory(remaining);
-                Game1.addHUDMessage(new HUDMessage("箱子已满，部分物品未存入"));
+                var item = player.Items[i];
+                if (item == null) continue;
+                if (item is Tool) continue;
+
+                // 如果这个物品不在上一次的快照里，说明是新拾取的
+                if (!lastInventory.Contains(item))
+                {
+                    // 从背包移除
+                    player.Items[i] = null;
+
+                    // 存入箱子
+                    var remaining = boundChest.addItem(item);
+                    if (remaining != null && remaining.Stack > 0)
+                    {
+                        player.addItemToInventory(remaining);
+                        Game1.addHUDMessage(new HUDMessage("箱子已满，部分物品未存入"));
+                    }
+                }
+            }
+
+            // 更新快照
+            lastInventory.Clear();
+            foreach (var item in player.Items)
+            {
+                if (item != null) lastInventory.Add(item);
             }
         }
     }
