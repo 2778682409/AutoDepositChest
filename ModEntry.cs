@@ -19,6 +19,7 @@ namespace AutoDepositChest
         {
             helper.Events.Input.ButtonPressed += OnButtonPressed;
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
+            helper.Events.Display.MenuChanged += OnMenuChanged;
         }
 
         private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
@@ -39,8 +40,6 @@ namespace AutoDepositChest
                     Game1.addHUDMessage(new HUDMessage("已绑定箱子"));
                 }
 
-                // 关键修复：绑定/解绑时，立刻刷新快照，
-                // 把当前背包里的物品全部标记为“已有”，避免被误判为新拾取
                 RefreshSnapshot();
             }
             else
@@ -49,10 +48,20 @@ namespace AutoDepositChest
             }
         }
 
+        private void OnMenuChanged(object sender, MenuChangedEventArgs e)
+        {
+            // 当任何菜单（包括箱子界面）打开或关闭时，刷新快照
+            // 这样玩家从箱子里取出的物品不会被误判为新拾取
+            RefreshSnapshot();
+        }
+
         private void OnUpdateTicked(object sender, UpdateTickedEventArgs e)
         {
             if (boundChest == null) return;
             if (!Context.IsWorldReady) return;
+
+            // 如果玩家正在打开任何菜单（比如箱子界面），暂停自动存入
+            if (Game1.activeClickableMenu != null) return;
 
             var player = Game1.player;
             for (int i = 0; i < player.Items.Count; i++)
