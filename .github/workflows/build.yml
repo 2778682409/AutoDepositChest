@@ -17,9 +17,9 @@ jobs:
       run: |
         git clone --depth 1 https://github.com/StardewModders/mod-reference-assemblies.git "${{ github.workspace }}/StardewValley"
     - name: Restore dependencies
-      run: dotnet restore
+      run: dotnet restore -p:GamePath="${{ github.workspace }}/StardewValley"
     - name: Build
-      run: dotnet build --configuration Release
+      run: dotnet build --configuration Release -p:GamePath="${{ github.workspace }}/StardewValley"
     - name: Upload artifact
       uses: actions/upload-artifact@v5
       with:
