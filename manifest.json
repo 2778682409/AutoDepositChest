@@ -1,0 +1,9 @@
+{
+  "Name": "Auto Deposit Chest",
+  "Author": "yuan",
+  "Version": "1.0.0",
+  "Description": "临时绑定一个箱子，拾取的物品自动存入其中。",
+  "UniqueID": "yuan.AutoDepositChest",
+  "EntryDll": "AutoDepositChest.dll",
+  "MinimumApiVersion": "4.0.0"
+}
