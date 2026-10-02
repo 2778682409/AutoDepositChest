@@ -1,0 +1,34 @@
+名称: 构建模块
+
+开启:
+推送:
+: [主]
+  workflow_dispatch:
+
+作业:
+构建:
+: windows-latest
+
+步骤:
+actions/checkout@v4
+
+    - 名称: 安装 .NET
+使用: actions/setup-dotnet@v4
+:
+        dotnet-version: '6.0.x'
+
+    - 名称: 下载游戏引用程序集
+运行: |
+        git clone --depth 1 https://github.com/StardewModders/mod-reference-assemblies.git "${{ github.workspace }}/StardewValley"
+
+    - 名称: 恢复依赖项
+运行: dotnet restore
+
+    - 名称: 构建
+运行: dotnet build --configuration Release
+
+    - 名称: 上传工件
+使用: actions/upload-artifact@v4
+与:
+名称自动存放箱
+: bin/Release/net6.0/AutoDepositChest.dll
