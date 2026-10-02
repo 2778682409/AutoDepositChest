@@ -13,7 +13,6 @@ namespace AutoDepositChest
     {
         private Chest boundChest = null;
         private SButton bindKey = SButton.F8;
-        // 记录上一次背包里物品的快照
         private List<Item> lastInventory = new List<Item>();
 
         public override void Entry(IModHelper helper)
@@ -39,6 +38,10 @@ namespace AutoDepositChest
                     boundChest = chest;
                     Game1.addHUDMessage(new HUDMessage("已绑定箱子"));
                 }
+
+                // 关键修复：绑定/解绑时，立刻刷新快照，
+                // 把当前背包里的物品全部标记为“已有”，避免被误判为新拾取
+                RefreshSnapshot();
             }
             else
             {
@@ -52,20 +55,16 @@ namespace AutoDepositChest
             if (!Context.IsWorldReady) return;
 
             var player = Game1.player;
-            // 遍历当前背包
             for (int i = 0; i < player.Items.Count; i++)
             {
                 var item = player.Items[i];
                 if (item == null) continue;
                 if (item is Tool) continue;
 
-                // 如果这个物品不在上一次的快照里，说明是新拾取的
                 if (!lastInventory.Contains(item))
                 {
-                    // 从背包移除
                     player.Items[i] = null;
 
-                    // 存入箱子
                     var remaining = boundChest.addItem(item);
                     if (remaining != null && remaining.Stack > 0)
                     {
@@ -75,9 +74,13 @@ namespace AutoDepositChest
                 }
             }
 
-            // 更新快照
+            RefreshSnapshot();
+        }
+
+        private void RefreshSnapshot()
+        {
             lastInventory.Clear();
-            foreach (var item in player.Items)
+            foreach (var item in Game1.player.Items)
             {
                 if (item != null) lastInventory.Add(item);
             }
