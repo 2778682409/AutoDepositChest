@@ -377,6 +377,7 @@ namespace AutoDepositChest
             if (currentOpenChest != null)
             {
                 CleanupMissingChests();
+                RefreshSnapshot();
                 return;
             }
 
@@ -396,8 +397,13 @@ namespace AutoDepositChest
 
             CleanupMissingChests();
 
-            // 临时关闭时跳过存入
-            if (!autoDepositEnabled) return;
+            // 临时关闭时跳过存入，但仍要刷新快照，
+            // 避免重新开启后把关闭期间拾取的东西误判为新拾取
+            if (!autoDepositEnabled)
+            {
+                RefreshSnapshot();
+                return;
+            }
 
             if (boundChests.Count == 0) return;
             if (Game1.activeClickableMenu != null) return;
