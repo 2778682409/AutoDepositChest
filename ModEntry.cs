@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -33,18 +32,12 @@ namespace AutoDepositChest
                 if (boundChests.Contains(chest))
                 {
                     boundChests.Remove(chest);
-                    Game1.addHUDMessage(new HUDMessage($"已解绑箱子（剩余 {boundChests.Count} 个）", 2)
-                    {
-                        messageSubject = new ChestIcon()
-                    });
+                    Game1.addHUDMessage(new HUDMessage($"已解绑箱子（剩余 {boundChests.Count} 个）", 2));
                 }
                 else
                 {
                     boundChests.Add(chest);
-                    Game1.addHUDMessage(new HUDMessage($"已绑定箱子（共 {boundChests.Count} 个）", 2)
-                    {
-                        messageSubject = new ChestIcon()
-                    });
+                    Game1.addHUDMessage(new HUDMessage($"已绑定箱子（共 {boundChests.Count} 个）", 2));
                 }
 
                 RefreshSnapshot();
@@ -134,29 +127,6 @@ namespace AutoDepositChest
             {
                 if (item != null) lastInventory.Add(item);
             }
-        }
-    }
-
-    /// <summary>专门给 HUD 用的箱子图标，继承自 Texture2D，绘制时自动缩放。</summary>
-    public class ChestIcon : Texture2D
-    {
-        public ChestIcon() : base(Game1.graphics.GraphicsDevice, 16, 16)
-        {
-            // 手动画一个简单的箱子图标：棕色底 + 黑色边框
-            Color[] data = new Color[16 * 16];
-            for (int y = 0; y < 16; y++)
-            {
-                for (int x = 0; x < 16; x++)
-                {
-                    if (x == 0 || x == 15 || y == 0 || y == 15)
-                        data[y * 16 + x] = Color.Black; // 边框
-                    else if (y > 1 && y < 14 && x > 1 && x < 14)
-                        data[y * 16 + x] = new Color(139, 69, 19); // 棕色
-                    else
-                        data[y * 16 + x] = Color.Transparent;
-                }
-            }
-            this.SetData(data);
         }
     }
 }
