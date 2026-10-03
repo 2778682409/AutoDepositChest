@@ -15,10 +15,13 @@ namespace AutoDepositChest
 {
     public class ModEntry : Mod
     {
+        private const string SaveDataKey = "bound-chests";
+
         private List<Chest> boundChests = new List<Chest>();
         private SButton singleKey = SButton.F8;
         private SButton batchKey = SButton.F8;
         private SButton clearKey = SButton.F7;
+        private SButton toggleKey = SButton.F6;
         private int longPressThreshold = 500;
         private List<Item> lastInventory = new List<Item>();
 
@@ -26,6 +29,9 @@ namespace AutoDepositChest
         private bool singleKeyDown = false;
         private DateTime singleKeyDownTime;
         private bool longPressActive = false;
+
+        // 临时关闭自动存入
+        private bool autoDepositEnabled = true;
 
         private Chest currentOpenChest = null;
 
@@ -36,25 +42,70 @@ namespace AutoDepositChest
             if (!Enum.TryParse(config.SingleKey, true, out singleKey)) singleKey = SButton.F8;
             if (!Enum.TryParse(config.BatchKey, true, out batchKey)) batchKey = SButton.F8;
             if (!Enum.TryParse(config.ClearKey, true, out clearKey)) clearKey = SButton.F7;
+            if (!Enum.TryParse(config.ToggleKey, true, out toggleKey)) toggleKey = SButton.F6;
 
             longPressThreshold = config.LongPressThreshold > 0 ? config.LongPressThreshold : 500;
             sameKeyMode = (singleKey == batchKey);
 
-            Monitor.Log($"短按键: {singleKey}，长按键: {batchKey}，清空键: {clearKey}，长短按共用: {sameKeyMode}", LogLevel.Info);
+            Monitor.Log($"短按: {singleKey}，长按: {batchKey}，清空: {clearKey}，开关: {toggleKey}，长短按共用: {sameKeyMode}", LogLevel.Info);
 
             helper.Events.Input.ButtonPressed += OnButtonPressed;
             helper.Events.Input.ButtonReleased += OnButtonReleased;
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
             helper.Events.Display.MenuChanged += OnMenuChanged;
             helper.Events.GameLoop.GameLaunched += OnGameLaunched;
+            helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
+            helper.Events.GameLoop.Saving += OnSaving;
         }
+
+        // ================== 存档持久化 ==================
+
+        private void OnSaveLoaded(object sender, SaveLoadedEventArgs e)
+        {
+            boundChests.Clear();
+            var data = Helper.Data.ReadSaveData<ChestSaveData>(SaveDataKey);
+            if (data == null) return;
+
+            foreach (var entry in data.Entries)
+            {
+                var location = Game1.getLocationFromName(entry.LocationName);
+                if (location == null) continue;
+
+                var tile = new Vector2(entry.X, entry.Y);
+                if (location.Objects.TryGetValue(tile, out var obj) && obj is Chest chest)
+                {
+                    boundChests.Add(chest);
+                }
+            }
+
+            Monitor.Log($"已从存档加载 {boundChests.Count} 个绑定箱子。", LogLevel.Info);
+        }
+
+        private void OnSaving(object sender, SavingEventArgs e)
+        {
+            var data = new ChestSaveData();
+            foreach (var chest in boundChests)
+            {
+                if (chest?.Location == null) continue;
+                data.Entries.Add(new ChestSaveEntry
+                {
+                    LocationName = chest.Location.Name,
+                    X = (int)chest.TileLocation.X,
+                    Y = (int)chest.TileLocation.Y
+                });
+            }
+            Helper.Data.WriteSaveData(SaveDataKey, data);
+            Monitor.Log($"已保存 {data.Entries.Count} 个绑定箱子到存档。", LogLevel.Info);
+        }
+
+        // ================== GMCM ==================
 
         private void OnGameLaunched(object sender, GameLaunchedEventArgs e)
         {
             var configMenu = Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
             if (configMenu == null)
             {
-                Monitor.Log("未检测到 Generic Mod Config Menu，跳过注册。", LogLevel.Info);
+                Monitor.Log("未检测到 GMCM，跳过注册。", LogLevel.Info);
                 return;
             }
 
@@ -67,6 +118,7 @@ namespace AutoDepositChest
                     config.SingleKey = "F8";
                     config.BatchKey = "F8";
                     config.ClearKey = "F7";
+                    config.ToggleKey = "F6";
                     config.LongPressThreshold = 500;
                 },
                 save: () =>
@@ -75,13 +127,14 @@ namespace AutoDepositChest
                     if (Enum.TryParse(config.SingleKey, true, out SButton s)) singleKey = s;
                     if (Enum.TryParse(config.BatchKey, true, out SButton b)) batchKey = b;
                     if (Enum.TryParse(config.ClearKey, true, out SButton c)) clearKey = c;
+                    if (Enum.TryParse(config.ToggleKey, true, out SButton t)) toggleKey = t;
                     longPressThreshold = config.LongPressThreshold > 0 ? config.LongPressThreshold : 500;
                     sameKeyMode = (singleKey == batchKey);
                 }
             );
 
             configMenu.AddKeybind(mod: ModManifest, name: () => "绑定/解绑单个箱子",
-                tooltip: () => "短按此键：绑定或解绑面前的单个箱子。打开箱子界面时也可直接绑定当前箱子。",
+                tooltip: () => "短按此键：绑定或解绑面前的单个箱子。",
                 getValue: () => ParseKey(config.SingleKey),
                 setValue: value => config.SingleKey = value.ToString());
 
@@ -90,10 +143,15 @@ namespace AutoDepositChest
                 getValue: () => ParseKey(config.BatchKey),
                 setValue: value => config.BatchKey = value.ToString());
 
-            configMenu.AddKeybind(mod: ModManifest, name: () => "一键解绑全部箱子",
+            configMenu.AddKeybind(mod: ModManifest, name: () => "一键解绑全部",
                 tooltip: () => "按下此键，解绑所有已绑定的箱子。",
                 getValue: () => ParseKey(config.ClearKey),
                 setValue: value => config.ClearKey = value.ToString());
+
+            configMenu.AddKeybind(mod: ModManifest, name: () => "临时关闭/开启自动存入",
+                tooltip: () => "按下此键，临时暂停或恢复自动存入功能。",
+                getValue: () => ParseKey(config.ToggleKey),
+                setValue: value => config.ToggleKey = value.ToString());
 
             configMenu.AddNumberOption(mod: ModManifest, name: () => "长按判定时间（毫秒）",
                 tooltip: () => "按住超过这个时间算长按。",
@@ -108,19 +166,19 @@ namespace AutoDepositChest
             return SButton.F8;
         }
 
-        /// <summary>根据箱子自身物品 ID 创建对应的 Item，用于 HUD 显示正确贴图。</summary>
+        // ================== 箱子图标 ==================
+
         private Item GetChestIcon(Chest chest)
         {
-            try
-            {
-                return ItemRegistry.Create(chest.QualifiedItemId, 1);
-            }
+            try { return ItemRegistry.Create(chest.QualifiedItemId, 1); }
             catch
             {
                 try { return new StardewValley.Object(chest.ItemId, 1); }
                 catch { return null; }
             }
         }
+
+        // ================== 箱子界面检测 ==================
 
         private void OnMenuChanged(object sender, MenuChangedEventArgs e)
         {
@@ -137,17 +195,12 @@ namespace AutoDepositChest
                     if (source is Chest chest)
                     {
                         currentOpenChest = chest;
-                        Monitor.Log($"打开箱子界面，绑定状态: {(boundChests.Contains(chest) ? "已绑定" : "未绑定")}", LogLevel.Info);
                     }
                 }
 
                 if (currentOpenChest == null)
                 {
                     currentOpenChest = FindChestInMenu(grabMenu);
-                    if (currentOpenChest != null)
-                    {
-                        Monitor.Log($"通过遍历菜单找到箱子，绑定状态: {(boundChests.Contains(currentOpenChest) ? "已绑定" : "未绑定")}", LogLevel.Info);
-                    }
                 }
             }
 
@@ -162,28 +215,33 @@ namespace AutoDepositChest
             foreach (var field in fields)
             {
                 var value = field.GetValue(menu);
-                if (value is Chest chest)
-                {
-                    return chest;
-                }
+                if (value is Chest chest) return chest;
 
                 if (value is IEnumerable enumerable && !(value is string))
                 {
                     foreach (var item in enumerable)
                     {
-                        if (item is Chest c)
-                        {
-                            return c;
-                        }
+                        if (item is Chest c) return c;
                     }
                 }
             }
-
             return null;
         }
 
+        // ================== 按键处理 ==================
+
         private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
         {
+            // 临时关闭/开启
+            if (e.Button == toggleKey)
+            {
+                autoDepositEnabled = !autoDepositEnabled;
+                Game1.playSound(autoDepositEnabled ? "bigSelect" : "bigDeSelect");
+                Game1.addHUDMessage(new HUDMessage(autoDepositEnabled ? "已开启自动存入" : "已暂停自动存入"));
+                return;
+            }
+
+            // 清空全部
             if (e.Button == clearKey)
             {
                 if (boundChests.Count == 0)
@@ -193,17 +251,16 @@ namespace AutoDepositChest
                 else
                 {
                     int count = boundChests.Count;
-                    Item icon = GetChestIcon(boundChests[0]); // 用第一个箱子的图标
+                    Item icon = GetChestIcon(boundChests[0]);
                     boundChests.Clear();
-                    Game1.addHUDMessage(new HUDMessage($"已解绑全部箱子（共 {count} 个）")
-                    {
-                        messageSubject = icon
-                    });
+                    Game1.playSound("trashcan");
+                    Game1.addHUDMessage(new HUDMessage($"已解绑全部箱子（共 {count} 个）") { messageSubject = icon });
                     RefreshSnapshot();
                 }
                 return;
             }
 
+            // 箱子界面内绑定
             if (currentOpenChest != null && (e.Button == singleKey || e.Button == batchKey))
             {
                 ToggleBindSpecificChest(currentOpenChest);
@@ -220,10 +277,7 @@ namespace AutoDepositChest
 
             if (!sameKeyMode)
             {
-                if (e.Button == singleKey)
-                {
-                    ToggleBindChestUnderPlayer();
-                }
+                if (e.Button == singleKey) ToggleBindChestUnderPlayer();
                 else if (e.Button == batchKey)
                 {
                     singleKeyDown = true;
@@ -249,18 +303,14 @@ namespace AutoDepositChest
             if (sameKeyMode && e.Button == singleKey)
             {
                 var holdTime = (DateTime.Now - singleKeyDownTime).TotalMilliseconds;
-                if (holdTime < longPressThreshold)
-                {
-                    ToggleBindChestUnderPlayer();
-                }
-                else
-                {
-                    Game1.addHUDMessage(new HUDMessage($"批量绑定结束（共 {boundChests.Count} 个）"));
-                }
+                if (holdTime < longPressThreshold) ToggleBindChestUnderPlayer();
+                else Game1.addHUDMessage(new HUDMessage($"批量绑定结束（共 {boundChests.Count} 个）"));
                 singleKeyDown = false;
                 longPressActive = false;
             }
         }
+
+        // ================== 绑定逻辑 ==================
 
         private void ToggleBindSpecificChest(Chest chest)
         {
@@ -269,22 +319,56 @@ namespace AutoDepositChest
             if (boundChests.Contains(chest))
             {
                 boundChests.Remove(chest);
-                Game1.addHUDMessage(new HUDMessage($"已解绑当前箱子（剩余 {boundChests.Count} 个）")
-                {
-                    messageSubject = icon
-                });
+                Game1.playSound("cancel");
+                Game1.addHUDMessage(new HUDMessage($"已解绑当前箱子（剩余 {boundChests.Count} 个）") { messageSubject = icon });
             }
             else
             {
                 boundChests.Add(chest);
-                Game1.addHUDMessage(new HUDMessage($"已绑定当前箱子（共 {boundChests.Count} 个）")
-                {
-                    messageSubject = icon
-                });
+                Game1.playSound("coin");
+                Game1.addHUDMessage(new HUDMessage($"已绑定当前箱子（共 {boundChests.Count} 个）") { messageSubject = icon });
             }
 
             RefreshSnapshot();
         }
+
+        private void ToggleBindChestUnderPlayer()
+        {
+            var tile = Game1.player.GetGrabTile();
+            if (Game1.currentLocation.Objects.TryGetValue(tile, out var obj) && obj is Chest chest)
+            {
+                ToggleBindSpecificChest(chest);
+            }
+            else
+            {
+                Game1.addHUDMessage(new HUDMessage("面前没有箱子"));
+            }
+        }
+
+        private void TryBindChestNearPlayer()
+        {
+            var playerTile = Game1.player.Tile;
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    var tile = new Vector2(playerTile.X + dx, playerTile.Y + dy);
+                    if (Game1.currentLocation.Objects.TryGetValue(tile, out var obj) && obj is Chest chest)
+                    {
+                        if (!boundChests.Contains(chest))
+                        {
+                            boundChests.Add(chest);
+                            Item icon = GetChestIcon(chest);
+                            Game1.playSound("coin");
+                            Game1.addHUDMessage(new HUDMessage($"已绑定箱子（共 {boundChests.Count} 个）") { messageSubject = icon });
+                            RefreshSnapshot();
+                        }
+                    }
+                }
+            }
+        }
+
+        // ================== 主循环 ==================
 
         private void OnUpdateTicked(object sender, UpdateTickedEventArgs e)
         {
@@ -307,14 +391,13 @@ namespace AutoDepositChest
                         Game1.addHUDMessage(new HUDMessage("开始批量绑定，路过箱子即可自动绑定"));
                     }
                 }
-
-                if (longPressActive)
-                {
-                    TryBindChestNearPlayer();
-                }
+                if (longPressActive) TryBindChestNearPlayer();
             }
 
             CleanupMissingChests();
+
+            // 临时关闭时跳过存入
+            if (!autoDepositEnabled) return;
 
             if (boundChests.Count == 0) return;
             if (Game1.activeClickableMenu != null) return;
@@ -342,10 +425,7 @@ namespace AutoDepositChest
                         }
                     }
 
-                    if (targetChest != null)
-                    {
-                        remaining = targetChest.addItem(remaining);
-                    }
+                    if (targetChest != null) remaining = targetChest.addItem(remaining);
 
                     if (remaining != null && remaining.Stack > 0)
                     {
@@ -368,45 +448,7 @@ namespace AutoDepositChest
             RefreshSnapshot();
         }
 
-        private void ToggleBindChestUnderPlayer()
-        {
-            var tile = Game1.player.GetGrabTile();
-
-            if (Game1.currentLocation.Objects.TryGetValue(tile, out var obj) && obj is Chest chest)
-            {
-                ToggleBindSpecificChest(chest);
-            }
-            else
-            {
-                Game1.addHUDMessage(new HUDMessage("面前没有箱子"));
-            }
-        }
-
-        private void TryBindChestNearPlayer()
-        {
-            var playerTile = Game1.player.Tile;
-            for (int dx = -1; dx <= 1; dx++)
-            {
-                for (int dy = -1; dy <= 1; dy++)
-                {
-                    var tile = new Vector2(playerTile.X + dx, playerTile.Y + dy);
-
-                    if (Game1.currentLocation.Objects.TryGetValue(tile, out var obj) && obj is Chest chest)
-                    {
-                        if (!boundChests.Contains(chest))
-                        {
-                            boundChests.Add(chest);
-                            Item icon = GetChestIcon(chest);
-                            Game1.addHUDMessage(new HUDMessage($"已绑定箱子（共 {boundChests.Count} 个）")
-                            {
-                                messageSubject = icon
-                            });
-                            RefreshSnapshot();
-                        }
-                    }
-                }
-            }
-        }
+        // ================== 辅助 ==================
 
         private void CleanupMissingChests()
         {
@@ -434,10 +476,7 @@ namespace AutoDepositChest
         {
             foreach (var slot in chest.Items)
             {
-                if (slot != null && slot.QualifiedItemId == item.QualifiedItemId)
-                {
-                    return true;
-                }
+                if (slot != null && slot.QualifiedItemId == item.QualifiedItemId) return true;
             }
             return false;
         }
@@ -452,11 +491,28 @@ namespace AutoDepositChest
         }
     }
 
+    // ================== 存档数据 ==================
+
+    public class ChestSaveData
+    {
+        public List<ChestSaveEntry> Entries { get; set; } = new List<ChestSaveEntry>();
+    }
+
+    public class ChestSaveEntry
+    {
+        public string LocationName { get; set; } = "";
+        public int X { get; set; }
+        public int Y { get; set; }
+    }
+
+    // ================== 配置 ==================
+
     public class ModConfig
     {
         public string SingleKey { get; set; } = "F8";
         public string BatchKey { get; set; } = "F8";
         public string ClearKey { get; set; } = "F7";
+        public string ToggleKey { get; set; } = "F6";
         public int LongPressThreshold { get; set; } = 500;
     }
 }
