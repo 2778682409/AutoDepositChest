@@ -11,7 +11,6 @@ namespace AutoDepositChest
 {
     public class ModEntry : Mod
     {
-        // 改成箱子列表，支持绑定多个箱子
         private List<Chest> boundChests = new List<Chest>();
         private SButton bindKey = SButton.F8;
         private List<Item> lastInventory = new List<Item>();
@@ -32,13 +31,11 @@ namespace AutoDepositChest
             {
                 if (boundChests.Contains(chest))
                 {
-                    // 如果已经绑定，则解绑
                     boundChests.Remove(chest);
                     Game1.addHUDMessage(new HUDMessage("已解绑箱子"));
                 }
                 else
                 {
-                    // 否则添加绑定
                     boundChests.Add(chest);
                     Game1.addHUDMessage(new HUDMessage($"已绑定箱子（共 {boundChests.Count} 个）"));
                 }
@@ -73,15 +70,37 @@ namespace AutoDepositChest
                 {
                     player.Items[i] = null;
 
-                    // 依次尝试存入每个绑定的箱子
+                    // 智能存入：优先找已包含同类物品的箱子
                     Item remaining = item;
+                    Chest targetChest = null;
+
                     foreach (var chest in boundChests)
                     {
-                        if (remaining == null || remaining.Stack <= 0) break;
-                        remaining = chest.addItem(remaining);
+                        if (chest.ContainsItem(item)) // 检查箱子里是否已有同类物品
+                        {
+                            targetChest = chest;
+                            break;
+                        }
                     }
 
-                    // 如果所有箱子都满了，把剩余的还给玩家
+                    // 如果找到了匹配的箱子，存入它
+                    if (targetChest != null)
+                    {
+                        remaining = targetChest.addItem(remaining);
+                    }
+
+                    // 如果没找到匹配箱子，或匹配箱子满了，按顺序存入其他箱子
+                    if (remaining != null && remaining.Stack > 0)
+                    {
+                        foreach (var chest in boundChests)
+                        {
+                            if (remaining == null || remaining.Stack <= 0) break;
+                            if (chest == targetChest) continue; // 跳过已尝试过的箱子
+                            remaining = chest.addItem(remaining);
+                        }
+                    }
+
+                    // 所有箱子都满了，还给玩家
                     if (remaining != null && remaining.Stack > 0)
                     {
                         player.addItemToInventory(remaining);
