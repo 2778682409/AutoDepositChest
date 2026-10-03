@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
+using StardewValley.Menus;
 using StardewValley.Objects;
 using StardewValley.Tools;
 using GenericModConfigMenu;
@@ -24,50 +25,33 @@ namespace AutoDepositChest
         private DateTime singleKeyDownTime;
         private bool longPressActive = false;
 
+        // 当前正在查看的箱子（打开箱子界面时记录）
+        private Chest currentOpenChest = null;
+
         public override void Entry(IModHelper helper)
         {
             var config = helper.ReadConfig<ModConfig>();
 
-            if (!Enum.TryParse(config.SingleKey, true, out singleKey))
-            {
-                singleKey = SButton.F8;
-                Monitor.Log($"SingleKey '{config.SingleKey}' 无效，使用默认 F8。", LogLevel.Warn);
-            }
-
-            if (!Enum.TryParse(config.BatchKey, true, out batchKey))
-            {
-                batchKey = SButton.F8;
-                Monitor.Log($"BatchKey '{config.BatchKey}' 无效，使用默认 F8。", LogLevel.Warn);
-            }
-
-            if (!Enum.TryParse(config.ClearKey, true, out clearKey))
-            {
-                clearKey = SButton.F7;
-                Monitor.Log($"ClearKey '{config.ClearKey}' 无效，使用默认 F7。", LogLevel.Warn);
-            }
+            if (!Enum.TryParse(config.SingleKey, true, out singleKey)) singleKey = SButton.F8;
+            if (!Enum.TryParse(config.BatchKey, true, out batchKey)) batchKey = SButton.F8;
+            if (!Enum.TryParse(config.ClearKey, true, out clearKey)) clearKey = SButton.F7;
 
             longPressThreshold = config.LongPressThreshold > 0 ? config.LongPressThreshold : 500;
             sameKeyMode = (singleKey == batchKey);
 
-            Monitor.Log($"短按键: {singleKey}，长按键: {batchKey}，清空键: {clearKey}，长短按共用: {sameKeyMode}，长按阈值: {longPressThreshold}ms", LogLevel.Info);
+            Monitor.Log($"短按键: {singleKey}，长按键: {batchKey}，清空键: {clearKey}，长短按共用: {sameKeyMode}", LogLevel.Info);
 
             helper.Events.Input.ButtonPressed += OnButtonPressed;
             helper.Events.Input.ButtonReleased += OnButtonReleased;
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
             helper.Events.Display.MenuChanged += OnMenuChanged;
-
-            // GMCM 注册在游戏启动后
             helper.Events.GameLoop.GameLaunched += OnGameLaunched;
         }
 
         private void OnGameLaunched(object sender, GameLaunchedEventArgs e)
         {
             var configMenu = Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
-            if (configMenu == null)
-            {
-                Monitor.Log("未检测到 Generic Mod Config Menu，跳过注册。", LogLevel.Info);
-                return;
-            }
+            if (configMenu == null) return;
 
             var config = Helper.ReadConfig<ModConfig>();
 
@@ -83,57 +67,90 @@ namespace AutoDepositChest
                 save: () =>
                 {
                     Helper.WriteConfig(config);
-
                     if (Enum.TryParse(config.SingleKey, true, out SButton s)) singleKey = s;
                     if (Enum.TryParse(config.BatchKey, true, out SButton b)) batchKey = b;
                     if (Enum.TryParse(config.ClearKey, true, out SButton c)) clearKey = c;
-
                     longPressThreshold = config.LongPressThreshold > 0 ? config.LongPressThreshold : 500;
                     sameKeyMode = (singleKey == batchKey);
                 }
             );
 
-            configMenu.AddKeybind(
-                mod: ModManifest,
-                name: () => "绑定/解绑单个箱子",
-                tooltip: () => "短按此键：绑定或解绑面前的单个箱子。",
+            configMenu.AddKeybind(mod: ModManifest, name: () => "绑定/解绑单个箱子",
+                tooltip: () => "短按此键：绑定或解绑面前的单个箱子。打开箱子界面时也可直接绑定当前箱子。",
                 getValue: () => ParseKey(config.SingleKey),
-                setValue: value => config.SingleKey = value.ToString()
-            );
+                setValue: value => config.SingleKey = value.ToString());
 
-            configMenu.AddKeybind(
-                mod: ModManifest,
-                name: () => "批量绑定",
-                tooltip: () => "按住此键走路，路过箱子自动绑定。若与短按键相同，则启用长短按检测。",
+            configMenu.AddKeybind(mod: ModManifest, name: () => "批量绑定",
+                tooltip: () => "按住此键走路，路过箱子自动绑定。",
                 getValue: () => ParseKey(config.BatchKey),
-                setValue: value => config.BatchKey = value.ToString()
-            );
+                setValue: value => config.BatchKey = value.ToString());
 
-            configMenu.AddKeybind(
-                mod: ModManifest,
-                name: () => "一键解绑全部箱子",
+            configMenu.AddKeybind(mod: ModManifest, name: () => "一键解绑全部箱子",
                 tooltip: () => "按下此键，解绑所有已绑定的箱子。",
                 getValue: () => ParseKey(config.ClearKey),
-                setValue: value => config.ClearKey = value.ToString()
-            );
+                setValue: value => config.ClearKey = value.ToString());
 
-            configMenu.AddNumberOption(
-                mod: ModManifest,
-                name: () => "长按判定时间（毫秒）",
-                tooltip: () => "短按键和长按键相同时，按住超过这个时间算长按。",
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "长按判定时间（毫秒）",
+                tooltip: () => "按住超过这个时间算长按。",
                 getValue: () => config.LongPressThreshold,
                 setValue: value => config.LongPressThreshold = value,
-                min: 100,
-                max: 2000,
-                interval: 50
-            );
+                min: 100, max: 2000, interval: 50);
         }
 
         private SButton ParseKey(string key)
         {
-            if (Enum.TryParse(key, true, out SButton result))
-                return result;
+            if (Enum.TryParse(key, true, out SButton result)) return result;
             return SButton.F8;
+        }
+
+        private void OnMenuChanged(object sender, MenuChangedEventArgs e)
+        {
+            // 打开箱子界面时，记录下当前正在查看的箱子
+            if (e.NewMenu is GameMenu gameMenu)
+            {
+                // GameMenu 里可能包含箱子界面
+                foreach (var page in gameMenu.pages)
+                {
+                    if (page is StardewValley.Menus.ChestPage chestPage)
+                    {
+                        // ChestPage 里没有直接的 chest 字段暴露，
+                        // 但如果是玩家打开的箱子，可以通过 Game1.activeClickableMenu 的上下文来获取
+                        // 这里简单处理：在打开箱子时，玩家点击的箱子可以通过 Game1.player.CurrentItem 或者箱子界面自己管理
+                    }
+                }
+            }
+
+            // 星露谷中打开箱子时，MenuChanged 触发的是 ItemGrabMenu
+            if (e.NewMenu is ItemGrabMenu grabMenu)
+            {
+                // ItemGrabMenu 的 source 字段是箱子对象，但可能不总是 Chest
+                // 通过反射或公开字段拿箱子
+                var sourceField = grabMenu.GetType().GetField("source");
+                if (sourceField != null)
+                {
+                    var source = sourceField.GetValue(grabMenu);
+                    if (source is Chest chest)
+                    {
+                        currentOpenChest = chest;
+                        Monitor.Log($"打开箱子界面，当前箱子绑定状态: {(boundChests.Contains(chest) ? "已绑定" : "未绑定")}", LogLevel.Info);
+                    }
+                    else
+                    {
+                        currentOpenChest = null;
+                    }
+                }
+                else
+                {
+                    // 尝试从 ItemsToGrabMenu 等上下文中获取
+                    currentOpenChest = null;
+                }
+            }
+            else
+            {
+                currentOpenChest = null;
+            }
+
+            RefreshSnapshot();
         }
 
         private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
@@ -151,6 +168,13 @@ namespace AutoDepositChest
                     Game1.addHUDMessage(new HUDMessage($"已解绑全部箱子（共 {count} 个）"));
                     RefreshSnapshot();
                 }
+                return;
+            }
+
+            // 如果打开了箱子界面，优先操作当前正在查看的箱子
+            if (currentOpenChest != null && e.Button == singleKey)
+            {
+                ToggleBindSpecificChest(currentOpenChest);
                 return;
             }
 
@@ -191,7 +215,6 @@ namespace AutoDepositChest
             if (sameKeyMode && e.Button == singleKey)
             {
                 var holdTime = (DateTime.Now - singleKeyDownTime).TotalMilliseconds;
-
                 if (holdTime < longPressThreshold)
                 {
                     ToggleBindChestUnderPlayer();
@@ -200,14 +223,25 @@ namespace AutoDepositChest
                 {
                     Game1.addHUDMessage(new HUDMessage($"批量绑定结束（共 {boundChests.Count} 个）"));
                 }
-
                 singleKeyDown = false;
                 longPressActive = false;
             }
         }
 
-        private void OnMenuChanged(object sender, MenuChangedEventArgs e)
+        /// <summary>直接绑定/解绑指定的箱子（用于打开箱子界面时）。</summary>
+        private void ToggleBindSpecificChest(Chest chest)
         {
+            if (boundChests.Contains(chest))
+            {
+                boundChests.Remove(chest);
+                Game1.addHUDMessage(new HUDMessage($"已解绑当前箱子（剩余 {boundChests.Count} 个）"));
+            }
+            else
+            {
+                boundChests.Add(chest);
+                Game1.addHUDMessage(new HUDMessage($"已绑定当前箱子（共 {boundChests.Count} 个）"));
+            }
+
             RefreshSnapshot();
         }
 
@@ -220,13 +254,10 @@ namespace AutoDepositChest
                 if (sameKeyMode)
                 {
                     var holdTime = (DateTime.Now - singleKeyDownTime).TotalMilliseconds;
-                    if (holdTime >= longPressThreshold)
+                    if (holdTime >= longPressThreshold && !longPressActive)
                     {
-                        if (!longPressActive)
-                        {
-                            longPressActive = true;
-                            Game1.addHUDMessage(new HUDMessage("开始批量绑定，路过箱子即可自动绑定"));
-                        }
+                        longPressActive = true;
+                        Game1.addHUDMessage(new HUDMessage("开始批量绑定，路过箱子即可自动绑定"));
                     }
                 }
 
@@ -296,18 +327,7 @@ namespace AutoDepositChest
 
             if (Game1.currentLocation.Objects.TryGetValue(tile, out var obj) && obj is Chest chest)
             {
-                if (boundChests.Contains(chest))
-                {
-                    boundChests.Remove(chest);
-                    Game1.addHUDMessage(new HUDMessage($"已解绑箱子（剩余 {boundChests.Count} 个）"));
-                }
-                else
-                {
-                    boundChests.Add(chest);
-                    Game1.addHUDMessage(new HUDMessage($"已绑定箱子（共 {boundChests.Count} 个）"));
-                }
-
-                RefreshSnapshot();
+                ToggleBindSpecificChest(chest);
             }
             else
             {
