@@ -76,7 +76,7 @@ namespace AutoDepositChest
 
                     foreach (var chest in boundChests)
                     {
-                        if (chest.ContainsItem(item)) // 检查箱子里是否已有同类物品
+                        if (ChestContainsItem(chest, item))
                         {
                             targetChest = chest;
                             break;
@@ -95,7 +95,7 @@ namespace AutoDepositChest
                         foreach (var chest in boundChests)
                         {
                             if (remaining == null || remaining.Stack <= 0) break;
-                            if (chest == targetChest) continue; // 跳过已尝试过的箱子
+                            if (chest == targetChest) continue;
                             remaining = chest.addItem(remaining);
                         }
                     }
@@ -110,6 +110,19 @@ namespace AutoDepositChest
             }
 
             RefreshSnapshot();
+        }
+
+        /// <summary>手动遍历箱子格子，判断是否包含同类物品</summary>
+        private bool ChestContainsItem(Chest chest, Item item)
+        {
+            foreach (var slot in chest.Items)
+            {
+                if (slot != null && slot.QualifiedItemId == item.QualifiedItemId)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void RefreshSnapshot()
