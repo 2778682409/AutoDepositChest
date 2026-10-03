@@ -14,15 +14,12 @@ namespace AutoDepositChest
         private List<Chest> boundChests = new List<Chest>();
         private SButton bindKey = SButton.F8;
         private SButton clearKey = SButton.F7;
+        private int longPressThreshold = 500; // 默认 500ms
         private List<Item> lastInventory = new List<Item>();
 
-        // 长按判定：按下按键后超过这个毫秒数，视为长按
-        private const int LongPressThreshold = 350;
-
-        // 按键当前状态
         private bool bindKeyDown = false;
-        private int bindKeyHoldTime = 0;
-        private bool longPressTriggered = false;
+        private DateTime bindKeyDownTime;
+        private bool longPressActive = false;
 
         public override void Entry(IModHelper helper)
         {
@@ -38,6 +35,8 @@ namespace AutoDepositChest
             else
                 Monitor.Log($"ClearKey '{config.ClearKey}' 无效，使用默认 F7。", LogLevel.Warn);
 
+            longPressThreshold = config.LongPressThreshold > 0 ? config.LongPressThreshold : 500;
+
             helper.Events.Input.ButtonPressed += OnButtonPressed;
             helper.Events.Input.ButtonReleased += OnButtonReleased;
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
@@ -49,8 +48,8 @@ namespace AutoDepositChest
             if (e.Button == bindKey)
             {
                 bindKeyDown = true;
-                bindKeyHoldTime = 0;
-                longPressTriggered = false;
+                bindKeyDownTime = DateTime.Now;
+                longPressActive = false;
             }
             else if (e.Button == clearKey)
             {
@@ -72,15 +71,19 @@ namespace AutoDepositChest
         {
             if (e.Button == bindKey)
             {
-                // 松开按键：如果没触发长按，说明是短按 → 绑定/解绑单个
-                if (!longPressTriggered)
+                var holdTime = (DateTime.Now - bindKeyDownTime).TotalMilliseconds;
+
+                if (holdTime < longPressThreshold)
                 {
                     ToggleBindChestUnderPlayer();
                 }
+                else
+                {
+                    Game1.addHUDMessage(new HUDMessage($"批量绑定结束（共 {boundChests.Count} 个）"));
+                }
 
                 bindKeyDown = false;
-                bindKeyHoldTime = 0;
-                longPressTriggered = false;
+                longPressActive = false;
             }
         }
 
@@ -93,21 +96,18 @@ namespace AutoDepositChest
         {
             if (!Context.IsWorldReady) return;
 
-            // 处理按键长按计时
             if (bindKeyDown)
             {
-                bindKeyHoldTime += (int)(e.Ticks * (1000.0 / 60.0));
+                var holdTime = (DateTime.Now - bindKeyDownTime).TotalMilliseconds;
 
-                // 如果按住超过阈值，进入长按状态（批量绑定）
-                if (!longPressTriggered && bindKeyHoldTime >= LongPressThreshold)
+                if (holdTime >= longPressThreshold)
                 {
-                    longPressTriggered = true;
-                    Game1.addHUDMessage(new HUDMessage("开始批量绑定，路过箱子即可自动绑定"));
-                }
+                    if (!longPressActive)
+                    {
+                        longPressActive = true;
+                        Game1.addHUDMessage(new HUDMessage("开始批量绑定，路过箱子即可自动绑定"));
+                    }
 
-                // 长按状态下，持续检测脚下的箱子
-                if (longPressTriggered)
-                {
                     TryBindChestUnderPlayer();
                 }
             }
@@ -166,7 +166,6 @@ namespace AutoDepositChest
             RefreshSnapshot();
         }
 
-        /// <summary>短按：绑定/解绑脚下的单个箱子（切换）。</summary>
         private void ToggleBindChestUnderPlayer()
         {
             var tile = Game1.player.GetGrabTile();
@@ -192,7 +191,6 @@ namespace AutoDepositChest
             }
         }
 
-        /// <summary>长按：持续绑定脚下的箱子（不触发解绑）。</summary>
         private void TryBindChestUnderPlayer()
         {
             var tile = Game1.player.GetGrabTile();
@@ -259,5 +257,8 @@ namespace AutoDepositChest
 
         /// <summary>一键解绑全部箱子。</summary>
         public string ClearKey { get; set; } = "F7";
+
+        /// <summary>长按判定阈值（毫秒）。按住超过这个时间算长按，触发批量绑定。</summary>
+        public int LongPressThreshold { get; set; } = 500;
     }
 }
