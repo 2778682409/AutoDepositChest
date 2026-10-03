@@ -27,7 +27,6 @@ namespace AutoDepositChest
         private DateTime singleKeyDownTime;
         private bool longPressActive = false;
 
-        // 当前正在查看的箱子（打开箱子界面时记录，支持 Chests Anywhere 远程箱子）
         private Chest currentOpenChest = null;
 
         public override void Entry(IModHelper helper)
@@ -109,6 +108,20 @@ namespace AutoDepositChest
             return SButton.F8;
         }
 
+        /// <summary>根据箱子自身物品 ID 创建对应的 Item，用于 HUD 显示正确贴图。</summary>
+        private Item GetChestIcon(Chest chest)
+        {
+            try
+            {
+                return ItemRegistry.Create(chest.QualifiedItemId, 1);
+            }
+            catch
+            {
+                try { return new StardewValley.Object(chest.ItemId, 1); }
+                catch { return null; }
+            }
+        }
+
         private void OnMenuChanged(object sender, MenuChangedEventArgs e)
         {
             currentOpenChest = null;
@@ -141,7 +154,6 @@ namespace AutoDepositChest
             RefreshSnapshot();
         }
 
-        /// <summary>在 ItemGrabMenu 里查找 Chest 对象（适配 Chests Anywhere 的远程箱子）。</summary>
         private Chest FindChestInMenu(ItemGrabMenu menu)
         {
             var fields = menu.GetType().GetFields(
@@ -181,14 +193,17 @@ namespace AutoDepositChest
                 else
                 {
                     int count = boundChests.Count;
+                    Item icon = GetChestIcon(boundChests[0]); // 用第一个箱子的图标
                     boundChests.Clear();
-                    Game1.addHUDMessage(new HUDMessage($"已解绑全部箱子（共 {count} 个）"));
+                    Game1.addHUDMessage(new HUDMessage($"已解绑全部箱子（共 {count} 个）")
+                    {
+                        messageSubject = icon
+                    });
                     RefreshSnapshot();
                 }
                 return;
             }
 
-            // 如果打开了箱子界面（包括 Chests Anywhere），优先操作当前查看的箱子
             if (currentOpenChest != null && (e.Button == singleKey || e.Button == batchKey))
             {
                 ToggleBindSpecificChest(currentOpenChest);
@@ -247,18 +262,16 @@ namespace AutoDepositChest
             }
         }
 
-        /// <summary>直接绑定/解绑指定的箱子（用于打开箱子界面时）。</summary>
         private void ToggleBindSpecificChest(Chest chest)
         {
-            // 用箱子自己的物品 ID 构造一个 Item，HUD 会显示对应贴图
-            var chestIcon = new StardewValley.Object(chest.ItemId, 1);
+            Item icon = GetChestIcon(chest);
 
             if (boundChests.Contains(chest))
             {
                 boundChests.Remove(chest);
                 Game1.addHUDMessage(new HUDMessage($"已解绑当前箱子（剩余 {boundChests.Count} 个）")
                 {
-                    messageSubject = chestIcon
+                    messageSubject = icon
                 });
             }
             else
@@ -266,7 +279,7 @@ namespace AutoDepositChest
                 boundChests.Add(chest);
                 Game1.addHUDMessage(new HUDMessage($"已绑定当前箱子（共 {boundChests.Count} 个）")
                 {
-                    messageSubject = chestIcon
+                    messageSubject = icon
                 });
             }
 
@@ -277,7 +290,6 @@ namespace AutoDepositChest
         {
             if (!Context.IsWorldReady) return;
 
-            // 如果打开了箱子界面（包括 Chests Anywhere），暂停批量绑定逻辑
             if (currentOpenChest != null)
             {
                 CleanupMissingChests();
@@ -384,7 +396,11 @@ namespace AutoDepositChest
                         if (!boundChests.Contains(chest))
                         {
                             boundChests.Add(chest);
-                            Game1.addHUDMessage(new HUDMessage($"已绑定箱子（共 {boundChests.Count} 个）"));
+                            Item icon = GetChestIcon(chest);
+                            Game1.addHUDMessage(new HUDMessage($"已绑定箱子（共 {boundChests.Count} 个）")
+                            {
+                                messageSubject = icon
+                            });
                             RefreshSnapshot();
                         }
                     }
