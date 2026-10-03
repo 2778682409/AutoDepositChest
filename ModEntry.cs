@@ -115,7 +115,6 @@ namespace AutoDepositChest
 
             if (e.NewMenu is ItemGrabMenu grabMenu)
             {
-                // 尝试从 source 字段获取箱子
                 var sourceField = grabMenu.GetType().GetField("source",
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
@@ -129,7 +128,6 @@ namespace AutoDepositChest
                     }
                 }
 
-                // 如果 source 不是 Chest，尝试从菜单里找 Chest 对象（适配 Chests Anywhere）
                 if (currentOpenChest == null)
                 {
                     currentOpenChest = FindChestInMenu(grabMenu);
@@ -157,7 +155,6 @@ namespace AutoDepositChest
                     return chest;
                 }
 
-                // 遍历集合类型的字段，看里面有没有 Chest
                 if (value is IEnumerable enumerable && !(value is string))
                 {
                     foreach (var item in enumerable)
@@ -195,7 +192,7 @@ namespace AutoDepositChest
             if (currentOpenChest != null && (e.Button == singleKey || e.Button == batchKey))
             {
                 ToggleBindSpecificChest(currentOpenChest);
-                return; // 关键：处理完直接返回，不再走后面的长短按逻辑
+                return;
             }
 
             if (sameKeyMode && e.Button == singleKey)
@@ -224,7 +221,6 @@ namespace AutoDepositChest
 
         private void OnButtonReleased(object sender, ButtonReleasedEventArgs e)
         {
-            // 如果打开了箱子界面，不处理长短按的松开逻辑
             if (currentOpenChest != null) return;
 
             if (!sameKeyMode && e.Button == batchKey)
@@ -254,15 +250,24 @@ namespace AutoDepositChest
         /// <summary>直接绑定/解绑指定的箱子（用于打开箱子界面时）。</summary>
         private void ToggleBindSpecificChest(Chest chest)
         {
+            // 用箱子自己的物品 ID 构造一个 Item，HUD 会显示对应贴图
+            var chestIcon = new StardewValley.Object(chest.ItemId, 1);
+
             if (boundChests.Contains(chest))
             {
                 boundChests.Remove(chest);
-                Game1.addHUDMessage(new HUDMessage($"已解绑当前箱子（剩余 {boundChests.Count} 个）"));
+                Game1.addHUDMessage(new HUDMessage($"已解绑当前箱子（剩余 {boundChests.Count} 个）")
+                {
+                    messageSubject = chestIcon
+                });
             }
             else
             {
                 boundChests.Add(chest);
-                Game1.addHUDMessage(new HUDMessage($"已绑定当前箱子（共 {boundChests.Count} 个）"));
+                Game1.addHUDMessage(new HUDMessage($"已绑定当前箱子（共 {boundChests.Count} 个）")
+                {
+                    messageSubject = chestIcon
+                });
             }
 
             RefreshSnapshot();
@@ -272,8 +277,7 @@ namespace AutoDepositChest
         {
             if (!Context.IsWorldReady) return;
 
-            // 如果打开了箱子界面（包括 Chests Anywhere），暂停批量绑定逻辑，
-            // 避免和“绑定当前箱子”功能冲突
+            // 如果打开了箱子界面（包括 Chests Anywhere），暂停批量绑定逻辑
             if (currentOpenChest != null)
             {
                 CleanupMissingChests();
