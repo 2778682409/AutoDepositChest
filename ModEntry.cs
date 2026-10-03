@@ -195,7 +195,7 @@ namespace AutoDepositChest
             if (currentOpenChest != null && (e.Button == singleKey || e.Button == batchKey))
             {
                 ToggleBindSpecificChest(currentOpenChest);
-                return;
+                return; // 关键：处理完直接返回，不再走后面的长短按逻辑
             }
 
             if (sameKeyMode && e.Button == singleKey)
@@ -224,6 +224,9 @@ namespace AutoDepositChest
 
         private void OnButtonReleased(object sender, ButtonReleasedEventArgs e)
         {
+            // 如果打开了箱子界面，不处理长短按的松开逻辑
+            if (currentOpenChest != null) return;
+
             if (!sameKeyMode && e.Button == batchKey)
             {
                 Game1.addHUDMessage(new HUDMessage($"批量绑定结束（共 {boundChests.Count} 个）"));
@@ -268,6 +271,14 @@ namespace AutoDepositChest
         private void OnUpdateTicked(object sender, UpdateTickedEventArgs e)
         {
             if (!Context.IsWorldReady) return;
+
+            // 如果打开了箱子界面（包括 Chests Anywhere），暂停批量绑定逻辑，
+            // 避免和“绑定当前箱子”功能冲突
+            if (currentOpenChest != null)
+            {
+                CleanupMissingChests();
+                return;
+            }
 
             if (singleKeyDown)
             {
