@@ -13,51 +13,74 @@ namespace AutoDepositChest
     {
         private List<Chest> boundChests = new List<Chest>();
         private SButton bindKey = SButton.F8;
+        private SButton clearKey = SButton.F7;
         private List<Item> lastInventory = new List<Item>();
+
+        // 长按判定：按下按键后超过这个毫秒数，视为长按
+        private const int LongPressThreshold = 350;
+
+        // 按键当前状态
+        private bool bindKeyDown = false;
+        private int bindKeyHoldTime = 0;
+        private bool longPressTriggered = false;
 
         public override void Entry(IModHelper helper)
         {
-            // 读取配置（如果没有 config.json，会自动生成一个默认的）
             var config = helper.ReadConfig<ModConfig>();
 
-            // 把配置里的按键字符串转换成 SButton
-            if (Enum.TryParse(config.BindKey, true, out SButton parsedKey))
-            {
-                bindKey = parsedKey;
-            }
+            if (Enum.TryParse(config.BindKey, true, out SButton parsedBind))
+                bindKey = parsedBind;
             else
-            {
-                Monitor.Log($"配置里的按键 '{config.BindKey}' 无效，使用默认的 F8。", LogLevel.Warn);
-            }
+                Monitor.Log($"BindKey '{config.BindKey}' 无效，使用默认 F8。", LogLevel.Warn);
+
+            if (Enum.TryParse(config.ClearKey, true, out SButton parsedClear))
+                clearKey = parsedClear;
+            else
+                Monitor.Log($"ClearKey '{config.ClearKey}' 无效，使用默认 F7。", LogLevel.Warn);
 
             helper.Events.Input.ButtonPressed += OnButtonPressed;
+            helper.Events.Input.ButtonReleased += OnButtonReleased;
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
             helper.Events.Display.MenuChanged += OnMenuChanged;
         }
 
         private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
         {
-            if (e.Button != bindKey) return;
-
-            var tile = Game1.player.GetGrabTile();
-            if (Game1.currentLocation.Objects.TryGetValue(tile, out var obj) && obj is Chest chest)
+            if (e.Button == bindKey)
             {
-                if (boundChests.Contains(chest))
+                bindKeyDown = true;
+                bindKeyHoldTime = 0;
+                longPressTriggered = false;
+            }
+            else if (e.Button == clearKey)
+            {
+                if (boundChests.Count == 0)
                 {
-                    boundChests.Remove(chest);
-                    Game1.addHUDMessage(new HUDMessage($"已解绑箱子（剩余 {boundChests.Count} 个）"));
+                    Game1.addHUDMessage(new HUDMessage("当前没有绑定任何箱子"));
                 }
                 else
                 {
-                    boundChests.Add(chest);
-                    Game1.addHUDMessage(new HUDMessage($"已绑定箱子（共 {boundChests.Count} 个）"));
+                    int count = boundChests.Count;
+                    boundChests.Clear();
+                    Game1.addHUDMessage(new HUDMessage($"已解绑全部箱子（共 {count} 个）"));
+                    RefreshSnapshot();
+                }
+            }
+        }
+
+        private void OnButtonReleased(object sender, ButtonReleasedEventArgs e)
+        {
+            if (e.Button == bindKey)
+            {
+                // 松开按键：如果没触发长按，说明是短按 → 绑定/解绑单个
+                if (!longPressTriggered)
+                {
+                    ToggleBindChestUnderPlayer();
                 }
 
-                RefreshSnapshot();
-            }
-            else
-            {
-                Monitor.Log("面前没有箱子。", LogLevel.Warn);
+                bindKeyDown = false;
+                bindKeyHoldTime = 0;
+                longPressTriggered = false;
             }
         }
 
@@ -69,6 +92,25 @@ namespace AutoDepositChest
         private void OnUpdateTicked(object sender, UpdateTickedEventArgs e)
         {
             if (!Context.IsWorldReady) return;
+
+            // 处理按键长按计时
+            if (bindKeyDown)
+            {
+                bindKeyHoldTime += (int)(e.Ticks * (1000.0 / 60.0));
+
+                // 如果按住超过阈值，进入长按状态（批量绑定）
+                if (!longPressTriggered && bindKeyHoldTime >= LongPressThreshold)
+                {
+                    longPressTriggered = true;
+                    Game1.addHUDMessage(new HUDMessage("开始批量绑定，路过箱子即可自动绑定"));
+                }
+
+                // 长按状态下，持续检测脚下的箱子
+                if (longPressTriggered)
+                {
+                    TryBindChestUnderPlayer();
+                }
+            }
 
             CleanupMissingChests();
 
@@ -124,6 +166,48 @@ namespace AutoDepositChest
             RefreshSnapshot();
         }
 
+        /// <summary>短按：绑定/解绑脚下的单个箱子（切换）。</summary>
+        private void ToggleBindChestUnderPlayer()
+        {
+            var tile = Game1.player.GetGrabTile();
+
+            if (Game1.currentLocation.Objects.TryGetValue(tile, out var obj) && obj is Chest chest)
+            {
+                if (boundChests.Contains(chest))
+                {
+                    boundChests.Remove(chest);
+                    Game1.addHUDMessage(new HUDMessage($"已解绑箱子（剩余 {boundChests.Count} 个）"));
+                }
+                else
+                {
+                    boundChests.Add(chest);
+                    Game1.addHUDMessage(new HUDMessage($"已绑定箱子（共 {boundChests.Count} 个）"));
+                }
+
+                RefreshSnapshot();
+            }
+            else
+            {
+                Game1.addHUDMessage(new HUDMessage("面前没有箱子"));
+            }
+        }
+
+        /// <summary>长按：持续绑定脚下的箱子（不触发解绑）。</summary>
+        private void TryBindChestUnderPlayer()
+        {
+            var tile = Game1.player.GetGrabTile();
+
+            if (Game1.currentLocation.Objects.TryGetValue(tile, out var obj) && obj is Chest chest)
+            {
+                if (!boundChests.Contains(chest))
+                {
+                    boundChests.Add(chest);
+                    Game1.addHUDMessage(new HUDMessage($"已绑定箱子（共 {boundChests.Count} 个）"));
+                    RefreshSnapshot();
+                }
+            }
+        }
+
         private void CleanupMissingChests()
         {
             for (int i = boundChests.Count - 1; i >= 0; i--)
@@ -168,10 +252,12 @@ namespace AutoDepositChest
         }
     }
 
-    /// <summary>模组配置，对应 config.json 文件。</summary>
     public class ModConfig
     {
-        /// <summary>绑定/解绑箱子的按键，比如 F8、F7、K 等。</summary>
+        /// <summary>绑定/解绑单个箱子（短按），或批量绑定（长按）。</summary>
         public string BindKey { get; set; } = "F8";
+
+        /// <summary>一键解绑全部箱子。</summary>
+        public string ClearKey { get; set; } = "F7";
     }
 }
