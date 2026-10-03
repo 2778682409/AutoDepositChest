@@ -6,6 +6,7 @@ using StardewModdingAPI.Events;
 using StardewValley;
 using StardewValley.Objects;
 using StardewValley.Tools;
+using GenericModConfigMenu;
 
 namespace AutoDepositChest
 {
@@ -18,10 +19,7 @@ namespace AutoDepositChest
         private int longPressThreshold = 500;
         private List<Item> lastInventory = new List<Item>();
 
-        // 判断两个键是否相同（决定是否启用长短按）
         private bool sameKeyMode = false;
-
-        // 按键状态
         private bool singleKeyDown = false;
         private DateTime singleKeyDownTime;
         private bool longPressActive = false;
@@ -57,11 +55,89 @@ namespace AutoDepositChest
             helper.Events.Input.ButtonReleased += OnButtonReleased;
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
             helper.Events.Display.MenuChanged += OnMenuChanged;
+
+            // GMCM 注册在游戏启动后
+            helper.Events.GameLoop.GameLaunched += OnGameLaunched;
+        }
+
+        private void OnGameLaunched(object sender, GameLaunchedEventArgs e)
+        {
+            var configMenu = Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
+            if (configMenu == null)
+            {
+                Monitor.Log("未检测到 Generic Mod Config Menu，跳过注册。", LogLevel.Info);
+                return;
+            }
+
+            var config = Helper.ReadConfig<ModConfig>();
+
+            configMenu.Register(
+                mod: ModManifest,
+                reset: () =>
+                {
+                    config.SingleKey = "F8";
+                    config.BatchKey = "F8";
+                    config.ClearKey = "F7";
+                    config.LongPressThreshold = 500;
+                },
+                save: () =>
+                {
+                    Helper.WriteConfig(config);
+
+                    if (Enum.TryParse(config.SingleKey, true, out SButton s)) singleKey = s;
+                    if (Enum.TryParse(config.BatchKey, true, out SButton b)) batchKey = b;
+                    if (Enum.TryParse(config.ClearKey, true, out SButton c)) clearKey = c;
+
+                    longPressThreshold = config.LongPressThreshold > 0 ? config.LongPressThreshold : 500;
+                    sameKeyMode = (singleKey == batchKey);
+                }
+            );
+
+            configMenu.AddKeybind(
+                mod: ModManifest,
+                name: () => "绑定/解绑单个箱子",
+                tooltip: () => "短按此键：绑定或解绑面前的单个箱子。",
+                getValue: () => ParseKey(config.SingleKey),
+                setValue: value => config.SingleKey = value.ToString()
+            );
+
+            configMenu.AddKeybind(
+                mod: ModManifest,
+                name: () => "批量绑定",
+                tooltip: () => "按住此键走路，路过箱子自动绑定。若与短按键相同，则启用长短按检测。",
+                getValue: () => ParseKey(config.BatchKey),
+                setValue: value => config.BatchKey = value.ToString()
+            );
+
+            configMenu.AddKeybind(
+                mod: ModManifest,
+                name: () => "一键解绑全部箱子",
+                tooltip: () => "按下此键，解绑所有已绑定的箱子。",
+                getValue: () => ParseKey(config.ClearKey),
+                setValue: value => config.ClearKey = value.ToString()
+            );
+
+            configMenu.AddNumberOption(
+                mod: ModManifest,
+                name: () => "长按判定时间（毫秒）",
+                tooltip: () => "短按键和长按键相同时，按住超过这个时间算长按。",
+                getValue: () => config.LongPressThreshold,
+                setValue: value => config.LongPressThreshold = value,
+                min: 100,
+                max: 2000,
+                interval: 50
+            );
+        }
+
+        private SButton ParseKey(string key)
+        {
+            if (Enum.TryParse(key, true, out SButton result))
+                return result;
+            return SButton.F8;
         }
 
         private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
         {
-            // 清空键
             if (e.Button == clearKey)
             {
                 if (boundChests.Count == 0)
@@ -78,7 +154,6 @@ namespace AutoDepositChest
                 return;
             }
 
-            // 长短按共用同一个键
             if (sameKeyMode && e.Button == singleKey)
             {
                 singleKeyDown = true;
@@ -87,20 +162,17 @@ namespace AutoDepositChest
                 return;
             }
 
-            // 两个键分开设置的情况
             if (!sameKeyMode)
             {
-                // 短按键：按下即触发绑定/解绑单个
                 if (e.Button == singleKey)
                 {
                     ToggleBindChestUnderPlayer();
                 }
-                // 长按键：按下即开始批量绑定
                 else if (e.Button == batchKey)
                 {
                     singleKeyDown = true;
                     singleKeyDownTime = DateTime.Now;
-                    longPressActive = true; // 直接进入长按模式
+                    longPressActive = true;
                     Game1.addHUDMessage(new HUDMessage("开始批量绑定，路过箱子即可自动绑定"));
                 }
             }
@@ -108,7 +180,6 @@ namespace AutoDepositChest
 
         private void OnButtonReleased(object sender, ButtonReleasedEventArgs e)
         {
-            // 长按键松开：结束批量绑定
             if (!sameKeyMode && e.Button == batchKey)
             {
                 Game1.addHUDMessage(new HUDMessage($"批量绑定结束（共 {boundChests.Count} 个）"));
@@ -117,19 +188,16 @@ namespace AutoDepositChest
                 return;
             }
 
-            // 长短按共用模式
             if (sameKeyMode && e.Button == singleKey)
             {
                 var holdTime = (DateTime.Now - singleKeyDownTime).TotalMilliseconds;
 
                 if (holdTime < longPressThreshold)
                 {
-                    // 短按：绑定/解绑单个
                     ToggleBindChestUnderPlayer();
                 }
                 else
                 {
-                    // 长按：批量绑定结束
                     Game1.addHUDMessage(new HUDMessage($"批量绑定结束（共 {boundChests.Count} 个）"));
                 }
 
@@ -147,12 +215,10 @@ namespace AutoDepositChest
         {
             if (!Context.IsWorldReady) return;
 
-            // 处理批量绑定状态
             if (singleKeyDown)
             {
                 if (sameKeyMode)
                 {
-                    // 长短按共用：按住超过阈值才进入批量绑定
                     var holdTime = (DateTime.Now - singleKeyDownTime).TotalMilliseconds;
                     if (holdTime >= longPressThreshold)
                     {
@@ -317,16 +383,9 @@ namespace AutoDepositChest
 
     public class ModConfig
     {
-        /// <summary>短按绑定/解绑单个箱子的按键。</summary>
         public string SingleKey { get; set; } = "F8";
-
-        /// <summary>长按批量绑定的按键。和 SingleKey 相同时自动启用长短按检测。</summary>
         public string BatchKey { get; set; } = "F8";
-
-        /// <summary>一键解绑全部箱子。</summary>
         public string ClearKey { get; set; } = "F7";
-
-        /// <summary>长短按共用时的判定阈值（毫秒）。</summary>
         public int LongPressThreshold { get; set; } = 500;
     }
 }
