@@ -32,12 +32,20 @@ namespace AutoDepositChest
                 if (boundChests.Contains(chest))
                 {
                     boundChests.Remove(chest);
-                    Game1.addHUDMessage(new HUDMessage("已解绑箱子"));
+                    // 传入箱子对象显示贴图，并显示剩余绑定数量
+                    Game1.addHUDMessage(new HUDMessage($"已解绑箱子（剩余 {boundChests.Count} 个）", 2)
+                    {
+                        messageSubject = chest
+                    });
                 }
                 else
                 {
                     boundChests.Add(chest);
-                    Game1.addHUDMessage(new HUDMessage($"已绑定箱子（共 {boundChests.Count} 个）"));
+                    // 传入箱子对象显示贴图，并显示当前绑定数量
+                    Game1.addHUDMessage(new HUDMessage($"已绑定箱子（共 {boundChests.Count} 个）", 2)
+                    {
+                        messageSubject = chest
+                    });
                 }
 
                 RefreshSnapshot();
@@ -83,13 +91,11 @@ namespace AutoDepositChest
                         }
                     }
 
-                    // 如果找到了匹配的箱子，存入它
                     if (targetChest != null)
                     {
                         remaining = targetChest.addItem(remaining);
                     }
 
-                    // 如果没找到匹配箱子，或匹配箱子满了，按顺序存入其他箱子
                     if (remaining != null && remaining.Stack > 0)
                     {
                         foreach (var chest in boundChests)
@@ -100,7 +106,6 @@ namespace AutoDepositChest
                         }
                     }
 
-                    // 所有箱子都满了，还给玩家
                     if (remaining != null && remaining.Stack > 0)
                     {
                         player.addItemToInventory(remaining);
@@ -112,7 +117,6 @@ namespace AutoDepositChest
             RefreshSnapshot();
         }
 
-        /// <summary>手动遍历箱子格子，判断是否包含同类物品</summary>
         private bool ChestContainsItem(Chest chest, Item item)
         {
             foreach (var slot in chest.Items)
