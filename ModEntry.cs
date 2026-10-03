@@ -51,7 +51,11 @@ namespace AutoDepositChest
         private void OnGameLaunched(object sender, GameLaunchedEventArgs e)
         {
             var configMenu = Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
-            if (configMenu == null) return;
+            if (configMenu == null)
+            {
+                Monitor.Log("未检测到 Generic Mod Config Menu，跳过注册。", LogLevel.Info);
+                return;
+            }
 
             var config = Helper.ReadConfig<ModConfig>();
 
@@ -105,26 +109,9 @@ namespace AutoDepositChest
 
         private void OnMenuChanged(object sender, MenuChangedEventArgs e)
         {
-            // 打开箱子界面时，记录下当前正在查看的箱子
-            if (e.NewMenu is GameMenu gameMenu)
-            {
-                // GameMenu 里可能包含箱子界面
-                foreach (var page in gameMenu.pages)
-                {
-                    if (page is StardewValley.Menus.ChestPage chestPage)
-                    {
-                        // ChestPage 里没有直接的 chest 字段暴露，
-                        // 但如果是玩家打开的箱子，可以通过 Game1.activeClickableMenu 的上下文来获取
-                        // 这里简单处理：在打开箱子时，玩家点击的箱子可以通过 Game1.player.CurrentItem 或者箱子界面自己管理
-                    }
-                }
-            }
-
-            // 星露谷中打开箱子时，MenuChanged 触发的是 ItemGrabMenu
+            // 打开箱子界面时，记录当前正在查看的箱子
             if (e.NewMenu is ItemGrabMenu grabMenu)
             {
-                // ItemGrabMenu 的 source 字段是箱子对象，但可能不总是 Chest
-                // 通过反射或公开字段拿箱子
                 var sourceField = grabMenu.GetType().GetField("source");
                 if (sourceField != null)
                 {
@@ -141,7 +128,6 @@ namespace AutoDepositChest
                 }
                 else
                 {
-                    // 尝试从 ItemsToGrabMenu 等上下文中获取
                     currentOpenChest = null;
                 }
             }
