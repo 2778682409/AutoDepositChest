@@ -9,17 +9,26 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v5
+
     - name: Setup .NET
       uses: actions/setup-dotnet@v5
       with:
         dotnet-version: '6.0.x'
+
     - name: Download game reference assemblies
       run: |
         git clone --depth 1 https://github.com/StardewModders/mod-reference-assemblies.git "${{ github.workspace }}/StardewValley"
+
+    - name: Copy GMCM reference
+      run: |
+        Copy-Item "${{ github.workspace }}/GenericModConfigMenu.dll" -Destination "${{ github.workspace }}/StardewValley/GenericModConfigMenu.dll"
+
     - name: Restore dependencies
       run: dotnet restore -p:GamePath="${{ github.workspace }}/StardewValley"
+
     - name: Build
       run: dotnet build --configuration Release -p:GamePath="${{ github.workspace }}/StardewValley"
+
     - name: Upload artifact
       uses: actions/upload-artifact@v5
       with:
