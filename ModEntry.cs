@@ -1,5 +1,7 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
@@ -25,7 +27,7 @@ namespace AutoDepositChest
         private DateTime singleKeyDownTime;
         private bool longPressActive = false;
 
-        // 当前正在查看的箱子（打开箱子界面时记录）
+        // 当前正在查看的箱子（打开箱子界面时记录，支持 Chests Anywhere 远程箱子）
         private Chest currentOpenChest = null;
 
         public override void Entry(IModHelper helper)
@@ -109,34 +111,66 @@ namespace AutoDepositChest
 
         private void OnMenuChanged(object sender, MenuChangedEventArgs e)
         {
-            // 打开箱子界面时，记录当前正在查看的箱子
+            currentOpenChest = null;
+
             if (e.NewMenu is ItemGrabMenu grabMenu)
             {
-                var sourceField = grabMenu.GetType().GetField("source");
+                // 尝试从 source 字段获取箱子
+                var sourceField = grabMenu.GetType().GetField("source",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
                 if (sourceField != null)
                 {
                     var source = sourceField.GetValue(grabMenu);
                     if (source is Chest chest)
                     {
                         currentOpenChest = chest;
-                        Monitor.Log($"打开箱子界面，当前箱子绑定状态: {(boundChests.Contains(chest) ? "已绑定" : "未绑定")}", LogLevel.Info);
-                    }
-                    else
-                    {
-                        currentOpenChest = null;
+                        Monitor.Log($"打开箱子界面，绑定状态: {(boundChests.Contains(chest) ? "已绑定" : "未绑定")}", LogLevel.Info);
                     }
                 }
-                else
+
+                // 如果 source 不是 Chest，尝试从菜单里找 Chest 对象（适配 Chests Anywhere）
+                if (currentOpenChest == null)
                 {
-                    currentOpenChest = null;
+                    currentOpenChest = FindChestInMenu(grabMenu);
+                    if (currentOpenChest != null)
+                    {
+                        Monitor.Log($"通过遍历菜单找到箱子，绑定状态: {(boundChests.Contains(currentOpenChest) ? "已绑定" : "未绑定")}", LogLevel.Info);
+                    }
                 }
-            }
-            else
-            {
-                currentOpenChest = null;
             }
 
             RefreshSnapshot();
+        }
+
+        /// <summary>在 ItemGrabMenu 里查找 Chest 对象（适配 Chests Anywhere 的远程箱子）。</summary>
+        private Chest FindChestInMenu(ItemGrabMenu menu)
+        {
+            var fields = menu.GetType().GetFields(
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+            foreach (var field in fields)
+            {
+                var value = field.GetValue(menu);
+                if (value is Chest chest)
+                {
+                    return chest;
+                }
+
+                // 遍历集合类型的字段，看里面有没有 Chest
+                if (value is IEnumerable enumerable && !(value is string))
+                {
+                    foreach (var item in enumerable)
+                    {
+                        if (item is Chest c)
+                        {
+                            return c;
+                        }
+                    }
+                }
+            }
+
+            return null;
         }
 
         private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
@@ -157,8 +191,8 @@ namespace AutoDepositChest
                 return;
             }
 
-            // 如果打开了箱子界面，优先操作当前正在查看的箱子
-            if (currentOpenChest != null && e.Button == singleKey)
+            // 如果打开了箱子界面（包括 Chests Anywhere），优先操作当前查看的箱子
+            if (currentOpenChest != null && (e.Button == singleKey || e.Button == batchKey))
             {
                 ToggleBindSpecificChest(currentOpenChest);
                 return;
