@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -32,19 +33,17 @@ namespace AutoDepositChest
                 if (boundChests.Contains(chest))
                 {
                     boundChests.Remove(chest);
-                    // 传入箱子对象显示贴图，并显示剩余绑定数量
                     Game1.addHUDMessage(new HUDMessage($"已解绑箱子（剩余 {boundChests.Count} 个）", 2)
                     {
-                        messageSubject = chest
+                        messageSubject = new ChestSprite(chest, 0.75f)
                     });
                 }
                 else
                 {
                     boundChests.Add(chest);
-                    // 传入箱子对象显示贴图，并显示当前绑定数量
                     Game1.addHUDMessage(new HUDMessage($"已绑定箱子（共 {boundChests.Count} 个）", 2)
                     {
-                        messageSubject = chest
+                        messageSubject = new ChestSprite(chest, 0.75f)
                     });
                 }
 
@@ -78,7 +77,6 @@ namespace AutoDepositChest
                 {
                     player.Items[i] = null;
 
-                    // 智能存入：优先找已包含同类物品的箱子
                     Item remaining = item;
                     Chest targetChest = null;
 
@@ -136,6 +134,34 @@ namespace AutoDepositChest
             {
                 if (item != null) lastInventory.Add(item);
             }
+        }
+    }
+
+    /// <summary>自定义的 HUD 显示对象，用于控制箱子贴图的缩放比例。</summary>
+    public class ChestSprite : Item
+    {
+        private readonly Chest chest;
+        private readonly float scale;
+
+        public ChestSprite(Chest chest, float scale)
+        {
+            this.chest = chest;
+            this.scale = scale;
+            // 赋一个空白的 Name，避免 HUD 渲染文字
+            this.Name = "";
+            this.DisplayName = "";
+            this.Category = -999;
+            this.ParentSheetIndex = 0;
+            // 复制箱子的贴图信息
+            this.ItemId = chest.ItemId;
+            this.QualifiedItemId = chest.QualifiedItemId;
+        }
+
+        public override void drawInMenu(SpriteBatch spriteBatch, Vector2 location, float scaleSize, float transparency, float layerDepth, StackDrawType drawStackNumber, Color color, bool drawShadow)
+        {
+            // 用我们自己指定的缩放比例绘制
+            float finalScale = scaleSize * this.scale * 4f;
+            chest.draw(spriteBatch, (int)location.X, (int)location.Y, finalScale, transparency, layerDepth, color);
         }
     }
 }
