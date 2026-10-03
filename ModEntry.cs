@@ -30,12 +30,15 @@ namespace AutoDepositChest
             var tile = Game1.player.GetGrabTile();
             if (Game1.currentLocation.Objects.TryGetValue(tile, out var obj) && obj is Chest chest)
             {
+                // 获取箱子当前的贴图（16x16 的小图）
+                var chestTexture = chest.GetTexture();
+
                 if (boundChests.Contains(chest))
                 {
                     boundChests.Remove(chest);
                     Game1.addHUDMessage(new HUDMessage($"已解绑箱子（剩余 {boundChests.Count} 个）", 2)
                     {
-                        messageSubject = new ChestSprite(chest, 0.75f)
+                        messageSubject = chestTexture
                     });
                 }
                 else
@@ -43,7 +46,7 @@ namespace AutoDepositChest
                     boundChests.Add(chest);
                     Game1.addHUDMessage(new HUDMessage($"已绑定箱子（共 {boundChests.Count} 个）", 2)
                     {
-                        messageSubject = new ChestSprite(chest, 0.75f)
+                        messageSubject = chestTexture
                     });
                 }
 
@@ -134,34 +137,6 @@ namespace AutoDepositChest
             {
                 if (item != null) lastInventory.Add(item);
             }
-        }
-    }
-
-    /// <summary>自定义的 HUD 显示对象，用于控制箱子贴图的缩放比例。</summary>
-    public class ChestSprite : Item
-    {
-        private readonly Chest chest;
-        private readonly float scale;
-
-        public ChestSprite(Chest chest, float scale)
-        {
-            this.chest = chest;
-            this.scale = scale;
-            // 赋一个空白的 Name，避免 HUD 渲染文字
-            this.Name = "";
-            this.DisplayName = "";
-            this.Category = -999;
-            this.ParentSheetIndex = 0;
-            // 复制箱子的贴图信息
-            this.ItemId = chest.ItemId;
-            this.QualifiedItemId = chest.QualifiedItemId;
-        }
-
-        public override void drawInMenu(SpriteBatch spriteBatch, Vector2 location, float scaleSize, float transparency, float layerDepth, StackDrawType drawStackNumber, Color color, bool drawShadow)
-        {
-            // 用我们自己指定的缩放比例绘制
-            float finalScale = scaleSize * this.scale * 4f;
-            chest.draw(spriteBatch, (int)location.X, (int)location.Y, finalScale, transparency, layerDepth, color);
         }
     }
 }
