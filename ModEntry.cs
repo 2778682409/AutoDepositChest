@@ -17,6 +17,15 @@ namespace AutoDepositChest
     {
         private const string SaveDataKey = "bound-chests";
 
+        // 晶球物品 ID，未开完的晶球不传送
+        private static readonly HashSet<string> GeodeIds = new HashSet<string>
+        {
+            "535", // Geode 晶球
+            "536", // Frozen Geode 冰封晶球
+            "537", // Magma Geode 熔岩晶球
+            "749"  // Omni Geode 万象晶球
+        };
+
         private List<Chest> boundChests = new List<Chest>();
         private SButton singleKey = SButton.F8;
         private SButton batchKey = SButton.F8;
@@ -30,10 +39,8 @@ namespace AutoDepositChest
         private DateTime singleKeyDownTime;
         private bool longPressActive = false;
 
-        // 临时关闭自动存入
         private bool autoDepositEnabled = true;
 
-        // 当前正在查看的箱子（打开箱子界面时记录，支持 Chests Anywhere 远程箱子）
         private Chest currentOpenChest = null;
 
         public override void Entry(IModHelper helper)
@@ -233,7 +240,6 @@ namespace AutoDepositChest
 
         private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
         {
-            // 临时关闭/开启
             if (e.Button == toggleKey)
             {
                 autoDepositEnabled = !autoDepositEnabled;
@@ -242,7 +248,6 @@ namespace AutoDepositChest
                 return;
             }
 
-            // 清空全部
             if (e.Button == clearKey)
             {
                 if (boundChests.Count == 0)
@@ -261,7 +266,6 @@ namespace AutoDepositChest
                 return;
             }
 
-            // 箱子界面内绑定
             if (currentOpenChest != null && (e.Button == singleKey || e.Button == batchKey))
             {
                 ToggleBindSpecificChest(currentOpenChest);
@@ -398,8 +402,6 @@ namespace AutoDepositChest
 
             CleanupMissingChests();
 
-            // 临时关闭时跳过存入，但仍要刷新快照，
-            // 避免重新开启后把关闭期间拾取的东西误判为新拾取
             if (!autoDepositEnabled)
             {
                 RefreshSnapshot();
@@ -408,7 +410,7 @@ namespace AutoDepositChest
 
             if (boundChests.Count == 0) return;
 
-            // 关键：晶球界面打开时，允许自动存入（砸开的产物立刻传送）
+            // 允许晶球界面打开时继续存入
             bool isGeodeMenu = Game1.activeClickableMenu is StardewValley.Menus.GeodeMenu;
             if (Game1.activeClickableMenu != null && !isGeodeMenu) return;
 
@@ -418,6 +420,12 @@ namespace AutoDepositChest
                 var item = player.Items[i];
                 if (item == null) continue;
                 if (item is Tool) continue;
+
+                // 关键：晶球界面打开时，未开完的晶球不传送
+                if (isGeodeMenu && IsGeodeItem(item))
+                {
+                    continue;
+                }
 
                 if (!lastInventory.Contains(item))
                 {
@@ -459,6 +467,12 @@ namespace AutoDepositChest
         }
 
         // ================== 辅助 ==================
+
+        /// <summary>判断物品是否是晶球本身（未开完的晶球）。</summary>
+        private bool IsGeodeItem(Item item)
+        {
+            return item != null && GeodeIds.Contains(item.ItemId);
+        }
 
         private void CleanupMissingChests()
         {
