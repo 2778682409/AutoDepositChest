@@ -74,7 +74,7 @@ namespace AutoDepositChest
             helper.Events.GameLoop.Saving += OnSaving;
         }
 
-        // ================== 绘制按钮（自动识别大箱子） ==================
+        // ================== 绘制按钮 ==================
         private void OnRenderedActiveMenu(object sender, RenderedActiveMenuEventArgs e)
         {
             if (Game1.activeClickableMenu is ItemGrabMenu grabMenu && CurrentOpenChest != null)
@@ -246,43 +246,17 @@ namespace AutoDepositChest
             configMenu.AddKeybind(mod: ModManifest, name: () => "临时关闭/开启自动存入", getValue: () => ParseKey(Config.ToggleKey), setValue: value => Config.ToggleKey = value.ToString());
             configMenu.AddNumberOption(mod: ModManifest, name: () => "长按判定时间（毫秒）", getValue: () => Config.LongPressThreshold, setValue: value => Config.LongPressThreshold = value, min: 100, max: 2000, interval: 50);
 
-            // ===== 普通箱子按钮位置（用输入框） =====
             configMenu.AddSectionTitle(mod: ModManifest, text: () => "普通箱子按钮位置");
+            configMenu.AddTextOption(mod: ModManifest, name: () => "X 偏移", getValue: () => Config.BtnOffsetX.ToString(), setValue: value => { if (int.TryParse(value, out int v)) Config.BtnOffsetX = v; });
+            configMenu.AddTextOption(mod: ModManifest, name: () => "Y 偏移", getValue: () => Config.BtnOffsetY.ToString(), setValue: value => { if (int.TryParse(value, out int v)) Config.BtnOffsetY = v; });
+            configMenu.AddTextOption(mod: ModManifest, name: () => "宽度", getValue: () => Config.BtnWidth.ToString(), setValue: value => { if (int.TryParse(value, out int v)) Config.BtnWidth = v; });
+            configMenu.AddTextOption(mod: ModManifest, name: () => "高度", getValue: () => Config.BtnHeight.ToString(), setValue: value => { if (int.TryParse(value, out int v)) Config.BtnHeight = v; });
 
-            configMenu.AddTextOption(mod: ModManifest, name: () => "X 偏移",
-                getValue: () => Config.BtnOffsetX.ToString(),
-                setValue: value => { if (int.TryParse(value, out int v)) Config.BtnOffsetX = v; });
-
-            configMenu.AddTextOption(mod: ModManifest, name: () => "Y 偏移",
-                getValue: () => Config.BtnOffsetY.ToString(),
-                setValue: value => { if (int.TryParse(value, out int v)) Config.BtnOffsetY = v; });
-
-            configMenu.AddTextOption(mod: ModManifest, name: () => "宽度",
-                getValue: () => Config.BtnWidth.ToString(),
-                setValue: value => { if (int.TryParse(value, out int v)) Config.BtnWidth = v; });
-
-            configMenu.AddTextOption(mod: ModManifest, name: () => "高度",
-                getValue: () => Config.BtnHeight.ToString(),
-                setValue: value => { if (int.TryParse(value, out int v)) Config.BtnHeight = v; });
-
-            // ===== 大箱子按钮位置（用输入框） =====
             configMenu.AddSectionTitle(mod: ModManifest, text: () => "大箱子按钮位置");
-
-            configMenu.AddTextOption(mod: ModManifest, name: () => "X 偏移",
-                getValue: () => Config.LargeBtnOffsetX.ToString(),
-                setValue: value => { if (int.TryParse(value, out int v)) Config.LargeBtnOffsetX = v; });
-
-            configMenu.AddTextOption(mod: ModManifest, name: () => "Y 偏移",
-                getValue: () => Config.LargeBtnOffsetY.ToString(),
-                setValue: value => { if (int.TryParse(value, out int v)) Config.LargeBtnOffsetY = v; });
-
-            configMenu.AddTextOption(mod: ModManifest, name: () => "宽度",
-                getValue: () => Config.LargeBtnWidth.ToString(),
-                setValue: value => { if (int.TryParse(value, out int v)) Config.LargeBtnWidth = v; });
-
-            configMenu.AddTextOption(mod: ModManifest, name: () => "高度",
-                getValue: () => Config.LargeBtnHeight.ToString(),
-                setValue: value => { if (int.TryParse(value, out int v)) Config.LargeBtnHeight = v; });
+            configMenu.AddTextOption(mod: ModManifest, name: () => "X 偏移", getValue: () => Config.LargeBtnOffsetX.ToString(), setValue: value => { if (int.TryParse(value, out int v)) Config.LargeBtnOffsetX = v; });
+            configMenu.AddTextOption(mod: ModManifest, name: () => "Y 偏移", getValue: () => Config.LargeBtnOffsetY.ToString(), setValue: value => { if (int.TryParse(value, out int v)) Config.LargeBtnOffsetY = v; });
+            configMenu.AddTextOption(mod: ModManifest, name: () => "宽度", getValue: () => Config.LargeBtnWidth.ToString(), setValue: value => { if (int.TryParse(value, out int v)) Config.LargeBtnWidth = v; });
+            configMenu.AddTextOption(mod: ModManifest, name: () => "高度", getValue: () => Config.LargeBtnHeight.ToString(), setValue: value => { if (int.TryParse(value, out int v)) Config.LargeBtnHeight = v; });
         }
 
         private SButton ParseKey(string key) => Enum.TryParse(key, true, out SButton result) ? result : SButton.F8;
@@ -460,6 +434,13 @@ namespace AutoDepositChest
             if (!autoDepositEnabled) { RefreshSnapshot(); return; }
             if (boundChests.Count == 0) return;
 
+            // ===== 新增：制作界面打开时暂停自动存入并刷新快照 =====
+            if (Game1.activeClickableMenu is GameMenu gameMenu && gameMenu.GetCurrentPage() is CraftingPage)
+            {
+                RefreshSnapshot();
+                return;
+            }
+
             bool isGeodeMenu = Game1.activeClickableMenu is GeodeMenu;
             if (Game1.activeClickableMenu != null && !isGeodeMenu) return;
 
@@ -528,13 +509,11 @@ namespace AutoDepositChest
         public string ToggleKey { get; set; } = "F6";
         public int LongPressThreshold { get; set; } = 500;
 
-        // 普通箱子按钮默认值
         public int BtnOffsetX { get; set; } = -49;
         public int BtnOffsetY { get; set; } = 71;
         public int BtnWidth { get; set; } = 55;
         public int BtnHeight { get; set; } = 120;
 
-        // 大箱子按钮默认值
         public int LargeBtnOffsetX { get; set; } = -49;
         public int LargeBtnOffsetY { get; set; } = 71;
         public int LargeBtnWidth { get; set; } = 55;
