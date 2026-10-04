@@ -24,7 +24,7 @@ namespace AutoDepositChest
             "536",              // Frozen Geode 冰封晶球
             "537",              // Magma Geode 岩浆晶球
             "749",              // Omni Geode 万象晶球
-            "842",              // Artifact Trove 古物宝藏
+            "275",              // Artifact Trove 古物宝藏
             "791",              // Golden Coconut 金色椰子
             "MysteryBox",       // 谜之盒
             "GoldenMysteryBox"  // 金色谜之盒
