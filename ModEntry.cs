@@ -26,6 +26,9 @@ namespace AutoDepositChest
             "535", "536", "537", "749", "275", "791", "MysteryBox", "GoldenMysteryBox"
         };
 
+        // 缓存配置，避免每帧读取文件
+        private ModConfig Config;
+
         private List<Chest> boundChests = new List<Chest>();
         private SButton singleKey = SButton.F8;
         private SButton batchKey = SButton.F8;
@@ -41,7 +44,6 @@ namespace AutoDepositChest
 
         private bool autoDepositEnabled = true;
 
-        // 供 Patch 访问的公开属性
         public Chest CurrentOpenChest { get; private set; } = null;
         public Rectangle BindButtonBounds { get; private set; } = Rectangle.Empty;
 
@@ -49,18 +51,17 @@ namespace AutoDepositChest
         {
             Instance = this;
 
-            // 初始化 Harmony 补丁
             var harmony = new Harmony(this.ModManifest.UniqueID);
             harmony.PatchAll();
 
-            var config = helper.ReadConfig<ModConfig>();
+            Config = helper.ReadConfig<ModConfig>();
 
-            if (!Enum.TryParse(config.SingleKey, true, out singleKey)) singleKey = SButton.F8;
-            if (!Enum.TryParse(config.BatchKey, true, out batchKey)) batchKey = SButton.F8;
-            if (!Enum.TryParse(config.ClearKey, true, out clearKey)) clearKey = SButton.F7;
-            if (!Enum.TryParse(config.ToggleKey, true, out toggleKey)) toggleKey = SButton.F6;
+            if (!Enum.TryParse(Config.SingleKey, true, out singleKey)) singleKey = SButton.F8;
+            if (!Enum.TryParse(Config.BatchKey, true, out batchKey)) batchKey = SButton.F8;
+            if (!Enum.TryParse(Config.ClearKey, true, out clearKey)) clearKey = SButton.F7;
+            if (!Enum.TryParse(Config.ToggleKey, true, out toggleKey)) toggleKey = SButton.F6;
 
-            longPressThreshold = config.LongPressThreshold > 0 ? config.LongPressThreshold : 500;
+            longPressThreshold = Config.LongPressThreshold > 0 ? Config.LongPressThreshold : 500;
             sameKeyMode = (singleKey == batchKey);
 
             Monitor.Log($"短按: {singleKey}，长按: {batchKey}，清空: {clearKey}，开关: {toggleKey}，长短按共用: {sameKeyMode}", LogLevel.Info);
@@ -75,22 +76,21 @@ namespace AutoDepositChest
             helper.Events.GameLoop.Saving += OnSaving;
         }
 
-        // ================== 绘制适应 UI 缩放的自定义按钮 ==================
+        // ================== 绘制适应 UI 缩放及自定义大小的按钮 ==================
         private void OnRenderedActiveMenu(object sender, RenderedActiveMenuEventArgs e)
         {
             if (Game1.activeClickableMenu is ItemGrabMenu grabMenu && CurrentOpenChest != null)
             {
-                // 获取当前 UI 缩放系数（一般为 0.75, 1.0, 1.25, 1.5, 2.0 等）
                 float uiScale = Game1.options.uiScale;
                 if (uiScale <= 0) uiScale = 1f;
 
-                // 基准坐标和尺寸（基于 UI Scale = 1.0 时的设计）
-                int baseOffsetX = 90;
-                int baseOffsetY = 16;
-                int baseWidth = 120;
-                int baseHeight = 44;
+                // 从缓存的配置中读取自定义的基准值
+                int baseOffsetX = Config.BtnOffsetX;
+                int baseOffsetY = Config.BtnOffsetY;
+                int baseWidth = Config.BtnWidth;
+                int baseHeight = Config.BtnHeight;
 
-                // 根据缩放比例计算按钮的实际屏幕位置和大小
+                // 计算实际屏幕位置和大小
                 int btnX = grabMenu.xPositionOnScreen + (int)(baseOffsetX * uiScale);
                 int btnY = grabMenu.yPositionOnScreen + (int)(baseOffsetY * uiScale);
                 int btnW = (int)(baseWidth * uiScale);
@@ -113,14 +113,13 @@ namespace AutoDepositChest
                     true
                 );
 
-                // 绘制文字（先计算缩放后的文字尺寸，再居中）
+                // 绘制文字
                 Vector2 textSize = Game1.smallFont.MeasureString(bindButtonText) * uiScale;
                 Vector2 textPos = new Vector2(
                     btnX + (btnW - textSize.X) / 2,
                     btnY + (btnH - textSize.Y) / 2
                 );
 
-                // 使用带缩放的 DrawString 重载
                 e.SpriteBatch.DrawString(
                     Game1.smallFont,
                     bindButtonText,
@@ -182,26 +181,38 @@ namespace AutoDepositChest
             var configMenu = Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
             if (configMenu == null) return;
 
-            var config = Helper.ReadConfig<ModConfig>();
             configMenu.Register(
                 mod: ModManifest,
-                reset: () => { config.SingleKey = "F8"; config.BatchKey = "F8"; config.ClearKey = "F7"; config.ToggleKey = "F6"; config.LongPressThreshold = 500; },
+                reset: () => 
+                { 
+                    Config.SingleKey = "F8"; Config.BatchKey = "F8"; Config.ClearKey = "F7"; Config.ToggleKey = "F6"; 
+                    Config.LongPressThreshold = 500;
+                    Config.BtnOffsetX = 90; Config.BtnOffsetY = 16; Config.BtnWidth = 120; Config.BtnHeight = 44;
+                },
                 save: () =>
                 {
-                    Helper.WriteConfig(config);
-                    if (Enum.TryParse(config.SingleKey, true, out SButton s)) singleKey = s;
-                    if (Enum.TryParse(config.BatchKey, true, out SButton b)) batchKey = b;
-                    if (Enum.TryParse(config.ClearKey, true, out SButton c)) clearKey = c;
-                    if (Enum.TryParse(config.ToggleKey, true, out SButton t)) toggleKey = t;
-                    longPressThreshold = config.LongPressThreshold > 0 ? config.LongPressThreshold : 500;
+                    Helper.WriteConfig(Config);
+                    if (Enum.TryParse(Config.SingleKey, true, out SButton s)) singleKey = s;
+                    if (Enum.TryParse(Config.BatchKey, true, out SButton b)) batchKey = b;
+                    if (Enum.TryParse(Config.ClearKey, true, out SButton c)) clearKey = c;
+                    if (Enum.TryParse(Config.ToggleKey, true, out SButton t)) toggleKey = t;
+                    longPressThreshold = Config.LongPressThreshold > 0 ? Config.LongPressThreshold : 500;
                     sameKeyMode = (singleKey == batchKey);
                 }
             );
-            configMenu.AddKeybind(mod: ModManifest, name: () => "绑定/解绑单个箱子", tooltip: () => "短按此键：绑定或解绑面前的单个箱子。", getValue: () => ParseKey(config.SingleKey), setValue: value => config.SingleKey = value.ToString());
-            configMenu.AddKeybind(mod: ModManifest, name: () => "批量绑定", tooltip: () => "按住此键走路，路过箱子自动绑定。", getValue: () => ParseKey(config.BatchKey), setValue: value => config.BatchKey = value.ToString());
-            configMenu.AddKeybind(mod: ModManifest, name: () => "一键解绑全部", tooltip: () => "按下此键，解绑所有已绑定的箱子。", getValue: () => ParseKey(config.ClearKey), setValue: value => config.ClearKey = value.ToString());
-            configMenu.AddKeybind(mod: ModManifest, name: () => "临时关闭/开启自动存入", tooltip: () => "按下此键，临时暂停或恢复自动存入功能。", getValue: () => ParseKey(config.ToggleKey), setValue: value => config.ToggleKey = value.ToString());
-            configMenu.AddNumberOption(mod: ModManifest, name: () => "长按判定时间（毫秒）", tooltip: () => "按住超过这个时间算长按。", getValue: () => config.LongPressThreshold, setValue: value => config.LongPressThreshold = value, min: 100, max: 2000, interval: 50);
+
+            configMenu.AddKeybind(mod: ModManifest, name: () => "绑定/解绑单个箱子", tooltip: () => "短按此键：绑定或解绑面前的单个箱子。", getValue: () => ParseKey(Config.SingleKey), setValue: value => Config.SingleKey = value.ToString());
+            configMenu.AddKeybind(mod: ModManifest, name: () => "批量绑定", tooltip: () => "按住此键走路，路过箱子自动绑定。", getValue: () => ParseKey(Config.BatchKey), setValue: value => Config.BatchKey = value.ToString());
+            configMenu.AddKeybind(mod: ModManifest, name: () => "一键解绑全部", tooltip: () => "按下此键，解绑所有已绑定的箱子。", getValue: () => ParseKey(Config.ClearKey), setValue: value => Config.ClearKey = value.ToString());
+            configMenu.AddKeybind(mod: ModManifest, name: () => "临时关闭/开启自动存入", tooltip: () => "按下此键，临时暂停或恢复自动存入功能。", getValue: () => ParseKey(Config.ToggleKey), setValue: value => Config.ToggleKey = value.ToString());
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "长按判定时间（毫秒）", tooltip: () => "按住超过这个时间算长按。", getValue: () => Config.LongPressThreshold, setValue: value => Config.LongPressThreshold = value, min: 100, max: 2000, interval: 50);
+
+            // UI 自定义选项
+            configMenu.AddSectionTitle(mod: ModManifest, text: () => "按钮外观自定义");
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "按钮 X 坐标偏移", tooltip: () => "相对于箱子界面左上角的水平偏移量（UI缩放前）。", getValue: () => Config.BtnOffsetX, setValue: value => Config.BtnOffsetX = value, min: 0, max: 1000, interval: 5);
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "按钮 Y 坐标偏移", tooltip: () => "相对于箱子界面左上角的垂直偏移量（UI缩放前）。", getValue: () => Config.BtnOffsetY, setValue: value => Config.BtnOffsetY = value, min: 0, max: 1000, interval: 5);
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "按钮宽度", tooltip: () => "按钮的宽度（UI缩放前）。", getValue: () => Config.BtnWidth, setValue: value => Config.BtnWidth = value, min: 40, max: 300, interval: 5);
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "按钮高度", tooltip: () => "按钮的高度（UI缩放前）。", getValue: () => Config.BtnHeight, setValue: value => Config.BtnHeight = value, min: 20, max: 150, interval: 5);
         }
 
         private SButton ParseKey(string key) => Enum.TryParse(key, true, out SButton result) ? result : SButton.F8;
@@ -270,7 +281,6 @@ namespace AutoDepositChest
                 return;
             }
 
-            // 如果打开了箱子界面，按下绑定键也绑定当前箱子
             if (CurrentOpenChest != null && (e.Button == singleKey || e.Button == batchKey))
             {
                 ToggleBindSpecificChest(CurrentOpenChest);
@@ -311,7 +321,6 @@ namespace AutoDepositChest
         }
 
         // ================== 绑定逻辑 ==================
-        // 改成 public，供 Patch 调用
         public void ToggleBindSpecificChest(Chest chest)
         {
             Item icon = GetChestIcon(chest);
@@ -448,5 +457,11 @@ namespace AutoDepositChest
         public string ClearKey { get; set; } = "F7";
         public string ToggleKey { get; set; } = "F6";
         public int LongPressThreshold { get; set; } = 500;
+
+        // 按钮外观自定义
+        public int BtnOffsetX { get; set; } = 90;
+        public int BtnOffsetY { get; set; } = 16;
+        public int BtnWidth { get; set; } = 120;
+        public int BtnHeight { get; set; } = 44;
     }
 }
