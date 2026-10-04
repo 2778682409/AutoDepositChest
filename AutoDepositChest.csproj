@@ -10,5 +10,8 @@
   <ItemGroup>
     <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.1.0" />
     <PackageReference Include="Lib.Harmony" Version="2.3.3" />
+    <Reference Include="GenericModConfigMenu">
+      <HintPath>$(GamePath)/GenericModConfigMenu.dll</HintPath>
+    </Reference>
   </ItemGroup>
 </Project>
