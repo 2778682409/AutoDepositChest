@@ -414,59 +414,62 @@ namespace AutoDepositChest
 
         // ================== 主循环 ==================
         private void OnUpdateTicked(object sender, UpdateTickedEventArgs e)
+{
+    if (!Context.IsWorldReady) return;
+    if (CurrentOpenChest != null) { CleanupMissingChests(); RefreshSnapshot(); return; }
+
+    if (singleKeyDown)
+    {
+        if (sameKeyMode)
         {
-            if (!Context.IsWorldReady) return;
-            if (CurrentOpenChest != null) { CleanupMissingChests(); RefreshSnapshot(); return; }
-
-            if (singleKeyDown)
+            if ((DateTime.Now - singleKeyDownTime).TotalMilliseconds >= longPressThreshold && !longPressActive)
             {
-                if (sameKeyMode)
-                {
-                    if ((DateTime.Now - singleKeyDownTime).TotalMilliseconds >= longPressThreshold && !longPressActive)
-                    {
-                        longPressActive = true; Game1.addHUDMessage(new HUDMessage("开始批量绑定，路过箱子即可自动绑定"));
-                    }
-                }
-                if (longPressActive) TryBindChestNearPlayer();
+                longPressActive = true; Game1.addHUDMessage(new HUDMessage("开始批量绑定，路过箱子即可自动绑定"));
             }
-
-            CleanupMissingChests();
-            if (!autoDepositEnabled) { RefreshSnapshot(); return; }
-            if (boundChests.Count == 0) return;
-
-            // ===== 新增：制作界面打开时暂停自动存入并刷新快照 =====
-            if (Game1.activeClickableMenu is GameMenu gameMenu && gameMenu.GetCurrentPage() is CraftingPage)
-            {
-                RefreshSnapshot();
-                return;
-            }
-
-            bool isGeodeMenu = Game1.activeClickableMenu is GeodeMenu;
-            if (Game1.activeClickableMenu != null && !isGeodeMenu) return;
-
-            var player = Game1.player;
-            for (int i = 0; i < player.Items.Count; i++)
-            {
-                var item = player.Items[i];
-                if (item == null || item is Tool) continue;
-                if (isGeodeMenu && IsGeodeItem(item)) continue;
-
-                if (!lastInventory.Contains(item))
-                {
-                    player.Items[i] = null;
-                    Item remaining = item;
-                    Chest targetChest = null;
-                    foreach (var chest in boundChests) { if (ChestContainsItem(chest, item)) { targetChest = chest; break; } }
-                    if (targetChest != null) remaining = targetChest.addItem(remaining);
-                    if (remaining != null && remaining.Stack > 0)
-                    {
-                        foreach (var chest in boundChests) { if (remaining == null || remaining.Stack <= 0) break; if (chest == targetChest) continue; remaining = chest.addItem(remaining); }
-                    }
-                    if (remaining != null && remaining.Stack > 0) { player.addItemToInventory(remaining); Game1.addHUDMessage(new HUDMessage("所有绑定箱子已满，部分物品未存入")); }
-                }
-            }
-            RefreshSnapshot();
         }
+        if (longPressActive) TryBindChestNearPlayer();
+    }
+
+    CleanupMissingChests();
+    if (!autoDepositEnabled) { RefreshSnapshot(); return; }
+    if (boundChests.Count == 0) return;
+
+    // ===== 制作界面（背包内 + 工作台/灶台直接打开）都暂停自动存入 =====
+    bool isCraftingMenu = Game1.activeClickableMenu is CraftingPage
+        || (Game1.activeClickableMenu is GameMenu gm && gm.GetCurrentPage() is CraftingPage);
+
+    if (isCraftingMenu)
+    {
+        RefreshSnapshot();
+        return;
+    }
+
+    bool isGeodeMenu = Game1.activeClickableMenu is GeodeMenu;
+    if (Game1.activeClickableMenu != null && !isGeodeMenu) return;
+
+    var player = Game1.player;
+    for (int i = 0; i < player.Items.Count; i++)
+    {
+        var item = player.Items[i];
+        if (item == null || item is Tool) continue;
+        if (isGeodeMenu && IsGeodeItem(item)) continue;
+
+        if (!lastInventory.Contains(item))
+        {
+            player.Items[i] = null;
+            Item remaining = item;
+            Chest targetChest = null;
+            foreach (var chest in boundChests) { if (ChestContainsItem(chest, item)) { targetChest = chest; break; } }
+            if (targetChest != null) remaining = targetChest.addItem(remaining);
+            if (remaining != null && remaining.Stack > 0)
+            {
+                foreach (var chest in boundChests) { if (remaining == null || remaining.Stack <= 0) break; if (chest == targetChest) continue; remaining = chest.addItem(remaining); }
+            }
+            if (remaining != null && remaining.Stack > 0) { player.addItemToInventory(remaining); Game1.addHUDMessage(new HUDMessage("所有绑定箱子已满，部分物品未存入")); }
+        }
+    }
+    RefreshSnapshot();
+}
 
         // ================== 辅助 ==================
         private bool IsGeodeItem(Item item) => item != null && GeodeIds.Contains(item.ItemId);
