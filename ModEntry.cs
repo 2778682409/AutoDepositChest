@@ -74,7 +74,7 @@ namespace AutoDepositChest
             helper.Events.GameLoop.Saving += OnSaving;
         }
 
-        // ================== 绘制按钮（支持竖排/横排文字自适应） ==================
+        // ================== 绘制按钮（自动识别大箱子） ==================
         private void OnRenderedActiveMenu(object sender, RenderedActiveMenuEventArgs e)
         {
             if (Game1.activeClickableMenu is ItemGrabMenu grabMenu && CurrentOpenChest != null)
@@ -82,10 +82,19 @@ namespace AutoDepositChest
                 float uiScale = Game1.options.uiScale;
                 if (uiScale <= 0) uiScale = 1f;
 
-                int btnX = grabMenu.xPositionOnScreen + (int)(Config.BtnOffsetX * uiScale);
-                int btnY = grabMenu.yPositionOnScreen + (int)(Config.BtnOffsetY * uiScale);
-                int btnW = (int)(Config.BtnWidth * uiScale);
-                int btnH = (int)(Config.BtnHeight * uiScale);
+                // 判断是否为大箱子（大箱子物品栏行数 >= 4，普通箱子为 3 行）
+                bool isLargeChest = grabMenu.ItemsToGrabMenu != null && grabMenu.ItemsToGrabMenu.rows >= 4;
+
+                // 读取对应箱子的偏移量和尺寸
+                int offsetX = isLargeChest ? Config.LargeBtnOffsetX : Config.BtnOffsetX;
+                int offsetY = isLargeChest ? Config.LargeBtnOffsetY : Config.BtnOffsetY;
+                int baseWidth = isLargeChest ? Config.LargeBtnWidth : Config.BtnWidth;
+                int baseHeight = isLargeChest ? Config.LargeBtnHeight : Config.BtnHeight;
+
+                int btnX = grabMenu.xPositionOnScreen + (int)(offsetX * uiScale);
+                int btnY = grabMenu.yPositionOnScreen + (int)(offsetY * uiScale);
+                int btnW = (int)(baseWidth * uiScale);
+                int btnH = (int)(baseHeight * uiScale);
 
                 if (btnW <= 0 || btnH <= 0) return;
 
@@ -106,13 +115,11 @@ namespace AutoDepositChest
                     true
                 );
 
-                // ===== 判断竖排还是横排 =====
+                // ===== 竖排/横排文字自适应 =====
                 bool isVertical = btnH > btnW;
 
                 if (isVertical)
                 {
-                    // ===== 竖排文字：每个字一行 =====
-                    // 用单个中文字符测量基准尺寸
                     Vector2 charSize = Game1.smallFont.MeasureString("字");
                     float paddingX = 8f * uiScale;
                     float paddingY = 6f * uiScale;
@@ -121,17 +128,14 @@ namespace AutoDepositChest
 
                     if (availableW <= 0 || availableH <= 0) return;
 
-                    // 整段文字总高度 = 字符高度 × 字符数
                     float totalTextH = charSize.Y * bindButtonText.Length;
                     float totalTextW = charSize.X;
 
-                    // 能塞进按钮的缩放系数
                     float fitScaleX = availableW / totalTextW;
                     float fitScaleY = availableH / totalTextH;
                     float textScale = Math.Min(uiScale, Math.Min(fitScaleX, fitScaleY));
                     if (textScale < 0.3f) textScale = 0.3f;
 
-                    // 整个竖排文字块的起始 Y 坐标（垂直居中）
                     float scaledCharH = charSize.Y * textScale;
                     float startY = btnY + (btnH - totalTextH * textScale) / 2;
 
@@ -139,22 +143,13 @@ namespace AutoDepositChest
                     {
                         string c = bindButtonText[i].ToString();
                         Vector2 cSize = Game1.smallFont.MeasureString(c) * textScale;
+                        Vector2 cPos = new Vector2(btnX + (btnW - cSize.X) / 2, startY + i * scaledCharH);
 
-                        // 每个字水平居中，垂直按索引排列
-                        Vector2 cPos = new Vector2(
-                            btnX + (btnW - cSize.X) / 2,
-                            startY + i * scaledCharH
-                        );
-
-                        e.SpriteBatch.DrawString(
-                            Game1.smallFont, c, cPos, textColor,
-                            0f, Vector2.Zero, textScale, SpriteEffects.None, 0.5f
-                        );
+                        e.SpriteBatch.DrawString(Game1.smallFont, c, cPos, textColor, 0f, Vector2.Zero, textScale, SpriteEffects.None, 0.5f);
                     }
                 }
                 else
                 {
-                    // ===== 横排文字：整体一行 =====
                     Vector2 baseTextSize = Game1.smallFont.MeasureString(bindButtonText);
                     float paddingX = 10f * uiScale;
                     float paddingY = 8f * uiScale;
@@ -169,15 +164,9 @@ namespace AutoDepositChest
                     if (textScale < 0.3f) textScale = 0.3f;
 
                     Vector2 scaledTextSize = baseTextSize * textScale;
-                    Vector2 textPos = new Vector2(
-                        btnX + (btnW - scaledTextSize.X) / 2,
-                        btnY + (btnH - scaledTextSize.Y) / 2
-                    );
+                    Vector2 textPos = new Vector2(btnX + (btnW - scaledTextSize.X) / 2, btnY + (btnH - scaledTextSize.Y) / 2);
 
-                    e.SpriteBatch.DrawString(
-                        Game1.smallFont, bindButtonText, textPos, textColor,
-                        0f, Vector2.Zero, textScale, SpriteEffects.None, 0.5f
-                    );
+                    e.SpriteBatch.DrawString(Game1.smallFont, bindButtonText, textPos, textColor, 0f, Vector2.Zero, textScale, SpriteEffects.None, 0.5f);
                 }
             }
             else
@@ -236,8 +225,14 @@ namespace AutoDepositChest
                     Config.SingleKey = "F8"; Config.BatchKey = "F8";
                     Config.ClearKey = "F7"; Config.ToggleKey = "F6";
                     Config.LongPressThreshold = 500;
+
+                    // 普通箱子默认值（用户调整好的）
                     Config.BtnOffsetX = -49; Config.BtnOffsetY = 71;
                     Config.BtnWidth = 55; Config.BtnHeight = 120;
+
+                    // 大箱子默认值（根据普通箱子位置推算，可以先填个合理的）
+                    Config.LargeBtnOffsetX = -49; Config.LargeBtnOffsetY = 71;
+                    Config.LargeBtnWidth = 55; Config.LargeBtnHeight = 120;
                 },
                 save: () =>
                 {
@@ -251,17 +246,25 @@ namespace AutoDepositChest
                 }
             );
 
-            configMenu.AddKeybind(mod: ModManifest, name: () => "绑定/解绑单个箱子", tooltip: () => "短按此键：绑定或解绑面前的单个箱子。", getValue: () => ParseKey(Config.SingleKey), setValue: value => Config.SingleKey = value.ToString());
-            configMenu.AddKeybind(mod: ModManifest, name: () => "批量绑定", tooltip: () => "按住此键走路，路过箱子自动绑定。", getValue: () => ParseKey(Config.BatchKey), setValue: value => Config.BatchKey = value.ToString());
-            configMenu.AddKeybind(mod: ModManifest, name: () => "一键解绑全部", tooltip: () => "按下此键，解绑所有已绑定的箱子。", getValue: () => ParseKey(Config.ClearKey), setValue: value => Config.ClearKey = value.ToString());
-            configMenu.AddKeybind(mod: ModManifest, name: () => "临时关闭/开启自动存入", tooltip: () => "按下此键，临时暂停或恢复自动存入功能。", getValue: () => ParseKey(Config.ToggleKey), setValue: value => Config.ToggleKey = value.ToString());
-            configMenu.AddNumberOption(mod: ModManifest, name: () => "长按判定时间（毫秒）", tooltip: () => "按住超过这个时间算长按。", getValue: () => Config.LongPressThreshold, setValue: value => Config.LongPressThreshold = value, min: 100, max: 2000, interval: 50);
+            configMenu.AddKeybind(mod: ModManifest, name: () => "绑定/解绑单个箱子", getValue: () => ParseKey(Config.SingleKey), setValue: value => Config.SingleKey = value.ToString());
+            configMenu.AddKeybind(mod: ModManifest, name: () => "批量绑定", getValue: () => ParseKey(Config.BatchKey), setValue: value => Config.BatchKey = value.ToString());
+            configMenu.AddKeybind(mod: ModManifest, name: () => "一键解绑全部", getValue: () => ParseKey(Config.ClearKey), setValue: value => Config.ClearKey = value.ToString());
+            configMenu.AddKeybind(mod: ModManifest, name: () => "临时关闭/开启自动存入", getValue: () => ParseKey(Config.ToggleKey), setValue: value => Config.ToggleKey = value.ToString());
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "长按判定时间（毫秒）", getValue: () => Config.LongPressThreshold, setValue: value => Config.LongPressThreshold = value, min: 100, max: 2000, interval: 50);
 
-            configMenu.AddSectionTitle(mod: ModManifest, text: () => "按钮外观自定义");
-            configMenu.AddNumberOption(mod: ModManifest, name: () => "按钮 X 坐标偏移", tooltip: () => "相对于箱子界面左上角的水平偏移量（负数向左）。", getValue: () => Config.BtnOffsetX, setValue: value => Config.BtnOffsetX = value, min: -500, max: 2000, interval: 1);
-            configMenu.AddNumberOption(mod: ModManifest, name: () => "按钮 Y 坐标偏移", tooltip: () => "相对于箱子界面左上角的垂直偏移量（负数向上）。", getValue: () => Config.BtnOffsetY, setValue: value => Config.BtnOffsetY = value, min: -500, max: 2000, interval: 1);
-            configMenu.AddNumberOption(mod: ModManifest, name: () => "按钮宽度", tooltip: () => "按钮的宽度。", getValue: () => Config.BtnWidth, setValue: value => Config.BtnWidth = value, min: 20, max: 400, interval: 1);
-            configMenu.AddNumberOption(mod: ModManifest, name: () => "按钮高度", tooltip: () => "按钮的高度。高于宽度时文字自动竖排。", getValue: () => Config.BtnHeight, setValue: value => Config.BtnHeight = value, min: 20, max: 400, interval: 1);
+            // 普通箱子 UI
+            configMenu.AddSectionTitle(mod: ModManifest, text: () => "普通箱子按钮位置");
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "X 偏移", getValue: () => Config.BtnOffsetX, setValue: value => Config.BtnOffsetX = value, min: -500, max: 2000, interval: 1);
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "Y 偏移", getValue: () => Config.BtnOffsetY, setValue: value => Config.BtnOffsetY = value, min: -500, max: 2000, interval: 1);
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "宽度", getValue: () => Config.BtnWidth, setValue: value => Config.BtnWidth = value, min: 20, max: 400, interval: 1);
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "高度", getValue: () => Config.BtnHeight, setValue: value => Config.BtnHeight = value, min: 20, max: 400, interval: 1);
+
+            // 大箱子 UI
+            configMenu.AddSectionTitle(mod: ModManifest, text: () => "大箱子按钮位置");
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "X 偏移", getValue: () => Config.LargeBtnOffsetX, setValue: value => Config.LargeBtnOffsetX = value, min: -500, max: 2000, interval: 1);
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "Y 偏移", getValue: () => Config.LargeBtnOffsetY, setValue: value => Config.LargeBtnOffsetY = value, min: -500, max: 2000, interval: 1);
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "宽度", getValue: () => Config.LargeBtnWidth, setValue: value => Config.LargeBtnWidth = value, min: 20, max: 400, interval: 1);
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "高度", getValue: () => Config.LargeBtnHeight, setValue: value => Config.LargeBtnHeight = value, min: 20, max: 400, interval: 1);
         }
 
         private SButton ParseKey(string key) => Enum.TryParse(key, true, out SButton result) ? result : SButton.F8;
@@ -507,10 +510,16 @@ namespace AutoDepositChest
         public string ToggleKey { get; set; } = "F6";
         public int LongPressThreshold { get; set; } = 500;
 
-        // 按钮默认值（已按你调整好的数值）
+        // 普通箱子按钮默认值
         public int BtnOffsetX { get; set; } = -49;
         public int BtnOffsetY { get; set; } = 71;
         public int BtnWidth { get; set; } = 55;
         public int BtnHeight { get; set; } = 120;
+
+        // 大箱子按钮默认值
+        public int LargeBtnOffsetX { get; set; } = -49;
+        public int LargeBtnOffsetY { get; set; } = 71;
+        public int LargeBtnWidth { get; set; } = 55;
+        public int LargeBtnHeight { get; set; } = 120;
     }
 }
