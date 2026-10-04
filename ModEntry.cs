@@ -416,36 +416,42 @@ namespace AutoDepositChest
         private void OnUpdateTicked(object sender, UpdateTickedEventArgs e)
 {
     if (!Context.IsWorldReady) return;
-    if (CurrentOpenChest != null) { CleanupMissingChests(); RefreshSnapshot(); return; }
 
+    // 箱子界面打开时，暂停自动存入
+    if (CurrentOpenChest != null)
+    {
+        CleanupMissingChests();
+        RefreshSnapshot();
+        return;
+    }
+
+    // 处理批量绑定按键的长按逻辑
     if (singleKeyDown)
     {
         if (sameKeyMode)
         {
             if ((DateTime.Now - singleKeyDownTime).TotalMilliseconds >= longPressThreshold && !longPressActive)
             {
-                longPressActive = true; Game1.addHUDMessage(new HUDMessage("开始批量绑定，路过箱子即可自动绑定"));
+                longPressActive = true;
+                Game1.addHUDMessage(new HUDMessage("开始批量绑定，路过箱子即可自动绑定"));
             }
         }
         if (longPressActive) TryBindChestNearPlayer();
     }
 
     CleanupMissingChests();
+
     if (!autoDepositEnabled) { RefreshSnapshot(); return; }
     if (boundChests.Count == 0) return;
 
-    // ===== 制作界面（背包内 + 工作台/灶台直接打开）都暂停自动存入 =====
-    bool isCraftingMenu = Game1.activeClickableMenu is CraftingPage
-        || (Game1.activeClickableMenu is GameMenu gm && gm.GetCurrentPage() is CraftingPage);
-
-    if (isCraftingMenu)
+    // ===== 任何菜单打开时都暂停自动存入（晶球界面除外） =====
+    if (Game1.activeClickableMenu != null && !(Game1.activeClickableMenu is GeodeMenu))
     {
         RefreshSnapshot();
         return;
     }
 
     bool isGeodeMenu = Game1.activeClickableMenu is GeodeMenu;
-    if (Game1.activeClickableMenu != null && !isGeodeMenu) return;
 
     var player = Game1.player;
     for (int i = 0; i < player.Items.Count; i++)
