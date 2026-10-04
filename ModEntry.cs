@@ -20,13 +20,11 @@ namespace AutoDepositChest
         private const string SaveDataKey = "bound-chests";
         public static ModEntry Instance { get; private set; }
 
-        // 可以交给克林特砸开的物品 ID
         private static readonly HashSet<string> GeodeIds = new HashSet<string>
         {
             "535", "536", "537", "749", "275", "791", "MysteryBox", "GoldenMysteryBox"
         };
 
-        // 缓存配置，避免每帧读取文件
         private ModConfig Config;
 
         private List<Chest> boundChests = new List<Chest>();
@@ -76,7 +74,7 @@ namespace AutoDepositChest
             helper.Events.GameLoop.Saving += OnSaving;
         }
 
-        // ================== 绘制适应 UI 缩放及自定义大小的按钮 ==================
+        // ================== 绘制按钮（默认在箱子图标正下方，同宽贴边） ==================
         private void OnRenderedActiveMenu(object sender, RenderedActiveMenuEventArgs e)
         {
             if (Game1.activeClickableMenu is ItemGrabMenu grabMenu && CurrentOpenChest != null)
@@ -84,7 +82,7 @@ namespace AutoDepositChest
                 float uiScale = Game1.options.uiScale;
                 if (uiScale <= 0) uiScale = 1f;
 
-                // 从缓存的配置中读取自定义的基准值
+                // 从配置读取基准值（默认为箱子图标下方、同宽）
                 int baseOffsetX = Config.BtnOffsetX;
                 int baseOffsetY = Config.BtnOffsetY;
                 int baseWidth = Config.BtnWidth;
@@ -96,13 +94,15 @@ namespace AutoDepositChest
                 int btnW = (int)(baseWidth * uiScale);
                 int btnH = (int)(baseHeight * uiScale);
 
+                if (btnW <= 0 || btnH <= 0) return;
+
                 BindButtonBounds = new Rectangle(btnX, btnY, btnW, btnH);
 
                 bool isBound = boundChests.Contains(CurrentOpenChest);
                 string bindButtonText = isBound ? "已绑定" : "未绑定";
                 Color textColor = isBound ? Color.Green : Color.Red;
 
-                // 绘制原版风格的菜单框背景
+                // 绘制原版菜单框
                 IClickableMenu.drawTextureBox(
                     e.SpriteBatch,
                     Game1.menuTexture,
@@ -113,11 +113,26 @@ namespace AutoDepositChest
                     true
                 );
 
-                // 绘制文字
-                Vector2 textSize = Game1.smallFont.MeasureString(bindButtonText) * uiScale;
+                // ===== 字体自适应（保证不溢出按钮） =====
+                Vector2 baseTextSize = Game1.smallFont.MeasureString(bindButtonText);
+
+                float paddingX = 10f * uiScale;   // 内边距
+                float paddingY = 8f * uiScale;
+                float availableW = btnW - paddingX;
+                float availableH = btnH - paddingY;
+
+                if (availableW <= 0 || availableH <= 0 || baseTextSize.X <= 0 || baseTextSize.Y <= 0)
+                    return;
+
+                float fitScaleX = availableW / baseTextSize.X;
+                float fitScaleY = availableH / baseTextSize.Y;
+                float textScale = Math.Min(uiScale, Math.Min(fitScaleX, fitScaleY));
+                if (textScale < 0.3f) textScale = 0.3f;
+
+                Vector2 scaledTextSize = baseTextSize * textScale;
                 Vector2 textPos = new Vector2(
-                    btnX + (btnW - textSize.X) / 2,
-                    btnY + (btnH - textSize.Y) / 2
+                    btnX + (btnW - scaledTextSize.X) / 2,
+                    btnY + (btnH - scaledTextSize.Y) / 2
                 );
 
                 e.SpriteBatch.DrawString(
@@ -127,7 +142,7 @@ namespace AutoDepositChest
                     textColor,
                     0f,
                     Vector2.Zero,
-                    uiScale,
+                    textScale,
                     SpriteEffects.None,
                     0.5f
                 );
@@ -183,11 +198,11 @@ namespace AutoDepositChest
 
             configMenu.Register(
                 mod: ModManifest,
-                reset: () => 
-                { 
-                    Config.SingleKey = "F8"; Config.BatchKey = "F8"; Config.ClearKey = "F7"; Config.ToggleKey = "F6"; 
+                reset: () =>
+                {
+                    Config.SingleKey = "F8"; Config.BatchKey = "F8"; Config.ClearKey = "F7"; Config.ToggleKey = "F6";
                     Config.LongPressThreshold = 500;
-                    Config.BtnOffsetX = 90; Config.BtnOffsetY = 16; Config.BtnWidth = 120; Config.BtnHeight = 44;
+                    Config.BtnOffsetX = 32; Config.BtnOffsetY = 100; Config.BtnWidth = 64; Config.BtnHeight = 44;
                 },
                 save: () =>
                 {
@@ -207,12 +222,24 @@ namespace AutoDepositChest
             configMenu.AddKeybind(mod: ModManifest, name: () => "临时关闭/开启自动存入", tooltip: () => "按下此键，临时暂停或恢复自动存入功能。", getValue: () => ParseKey(Config.ToggleKey), setValue: value => Config.ToggleKey = value.ToString());
             configMenu.AddNumberOption(mod: ModManifest, name: () => "长按判定时间（毫秒）", tooltip: () => "按住超过这个时间算长按。", getValue: () => Config.LongPressThreshold, setValue: value => Config.LongPressThreshold = value, min: 100, max: 2000, interval: 50);
 
-            // UI 自定义选项
-            configMenu.AddSectionTitle(mod: ModManifest, text: () => "按钮外观自定义");
-            configMenu.AddNumberOption(mod: ModManifest, name: () => "按钮 X 坐标偏移", tooltip: () => "相对于箱子界面左上角的水平偏移量（UI缩放前）。", getValue: () => Config.BtnOffsetX, setValue: value => Config.BtnOffsetX = value, min: 0, max: 1000, interval: 5);
-            configMenu.AddNumberOption(mod: ModManifest, name: () => "按钮 Y 坐标偏移", tooltip: () => "相对于箱子界面左上角的垂直偏移量（UI缩放前）。", getValue: () => Config.BtnOffsetY, setValue: value => Config.BtnOffsetY = value, min: 0, max: 1000, interval: 5);
-            configMenu.AddNumberOption(mod: ModManifest, name: () => "按钮宽度", tooltip: () => "按钮的宽度（UI缩放前）。", getValue: () => Config.BtnWidth, setValue: value => Config.BtnWidth = value, min: 40, max: 300, interval: 5);
-            configMenu.AddNumberOption(mod: ModManifest, name: () => "按钮高度", tooltip: () => "按钮的高度（UI缩放前）。", getValue: () => Config.BtnHeight, setValue: value => Config.BtnHeight = value, min: 20, max: 150, interval: 5);
+            // UI 微调（默认值已经是你想要的位置，一般不用动）
+            configMenu.AddSectionTitle(mod: ModManifest, text: () => "按钮位置微调");
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "按钮 X 坐标偏移",
+                tooltip: () => "相对于箱子界面左上角的水平偏移量（默认 32，与箱子图标左边缘对齐）。",
+                getValue: () => Config.BtnOffsetX, setValue: value => Config.BtnOffsetX = value,
+                min: -100, max: 1000, interval: 1);
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "按钮 Y 坐标偏移",
+                tooltip: () => "相对于箱子界面左上角的垂直偏移量（默认 100，在箱子图标下方）。",
+                getValue: () => Config.BtnOffsetY, setValue: value => Config.BtnOffsetY = value,
+                min: -100, max: 1000, interval: 1);
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "按钮宽度",
+                tooltip: () => "按钮的宽度（默认 64，与箱子图标同宽）。",
+                getValue: () => Config.BtnWidth, setValue: value => Config.BtnWidth = value,
+                min: 20, max: 400, interval: 1);
+            configMenu.AddNumberOption(mod: ModManifest, name: () => "按钮高度",
+                tooltip: () => "按钮的高度（默认 44）。",
+                getValue: () => Config.BtnHeight, setValue: value => Config.BtnHeight = value,
+                min: 20, max: 200, interval: 1);
         }
 
         private SButton ParseKey(string key) => Enum.TryParse(key, true, out SButton result) ? result : SButton.F8;
@@ -458,10 +485,10 @@ namespace AutoDepositChest
         public string ToggleKey { get; set; } = "F6";
         public int LongPressThreshold { get; set; } = 500;
 
-        // 按钮外观自定义
-        public int BtnOffsetX { get; set; } = 90;
-        public int BtnOffsetY { get; set; } = 16;
-        public int BtnWidth { get; set; } = 120;
+        // 按钮默认在箱子图标正下方、同宽贴边
+        public int BtnOffsetX { get; set; } = 32;
+        public int BtnOffsetY { get; set; } = 100;
+        public int BtnWidth { get; set; } = 64;
         public int BtnHeight { get; set; } = 44;
     }
 }
