@@ -1,4 +1,5 @@
 using HarmonyLib;
+using Microsoft.Xna.Framework;
 using StardewValley.Menus;
 using StardewValley.Objects;
 
