@@ -33,6 +33,7 @@ namespace AutoDepositChest
         // 临时关闭自动存入
         private bool autoDepositEnabled = true;
 
+        // 当前正在查看的箱子（打开箱子界面时记录，支持 Chests Anywhere 远程箱子）
         private Chest currentOpenChest = null;
 
         public override void Entry(IModHelper helper)
@@ -134,7 +135,7 @@ namespace AutoDepositChest
             );
 
             configMenu.AddKeybind(mod: ModManifest, name: () => "绑定/解绑单个箱子",
-                tooltip: () => "短按此键：绑定或解绑面前的单个箱子。",
+                tooltip: () => "短按此键：绑定或解绑面前的单个箱子。打开箱子界面时也可直接绑定当前箱子。",
                 getValue: () => ParseKey(config.SingleKey),
                 setValue: value => config.SingleKey = value.ToString());
 
@@ -406,7 +407,10 @@ namespace AutoDepositChest
             }
 
             if (boundChests.Count == 0) return;
-            if (Game1.activeClickableMenu != null) return;
+
+            // 关键：晶球界面打开时，允许自动存入（砸开的产物立刻传送）
+            bool isGeodeMenu = Game1.activeClickableMenu is StardewValley.Menus.GeodeMenu;
+            if (Game1.activeClickableMenu != null && !isGeodeMenu) return;
 
             var player = Game1.player;
             for (int i = 0; i < player.Items.Count; i++)
