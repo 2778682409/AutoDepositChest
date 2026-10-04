@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -47,6 +48,10 @@ namespace AutoDepositChest
 
         private Chest currentOpenChest = null;
 
+        // 自定义 UI 按钮的边界和文字
+        private Rectangle bindButtonBounds = Rectangle.Empty;
+        private string bindButtonText = "";
+
         public override void Entry(IModHelper helper)
         {
             var config = helper.ReadConfig<ModConfig>();
@@ -65,9 +70,54 @@ namespace AutoDepositChest
             helper.Events.Input.ButtonReleased += OnButtonReleased;
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
             helper.Events.Display.MenuChanged += OnMenuChanged;
+            helper.Events.Display.RenderedActiveMenu += OnRenderedActiveMenu; // 新增：绘制自定义按钮
             helper.Events.GameLoop.GameLaunched += OnGameLaunched;
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
             helper.Events.GameLoop.Saving += OnSaving;
+        }
+
+        // ================== 绘制自定义按钮 ==================
+
+        private void OnRenderedActiveMenu(object sender, RenderedActiveMenuEventArgs e)
+        {
+            // 只有打开了箱子界面，并且获取到了当前箱子对象时才绘制
+            if (Game1.activeClickableMenu is ItemGrabMenu grabMenu && currentOpenChest != null)
+            {
+                // 计算按钮位置：位于左上角箱子图标的下方
+                // 原版箱子图标大约在 xPositionOnScreen + 32, yPositionOnScreen + 32
+                int btnX = grabMenu.xPositionOnScreen + 16;
+                int btnY = grabMenu.yPositionOnScreen + 80;
+                int btnW = 120;
+                int btnH = 40;
+
+                bindButtonBounds = new Rectangle(btnX, btnY, btnW, btnH);
+                bindButtonText = boundChests.Contains(currentOpenChest) ? "已绑定" : "未绑定";
+
+                // 绘制背景颜色（已绑定绿色，未绑定红色）
+                Color bgColor = boundChests.Contains(currentOpenChest) 
+                    ? Color.Green * 0.8f 
+                    : Color.Red * 0.8f;
+
+                e.SpriteBatch.Draw(Game1.staminaRect, bindButtonBounds, bgColor);
+
+                // 绘制边框
+                e.SpriteBatch.Draw(Game1.staminaRect, new Rectangle(btnX, btnY, btnW, 2), Color.Black);
+                e.SpriteBatch.Draw(Game1.staminaRect, new Rectangle(btnX, btnY + btnH - 2, btnW, 2), Color.Black);
+                e.SpriteBatch.Draw(Game1.staminaRect, new Rectangle(btnX, btnY, 2, btnH), Color.Black);
+                e.SpriteBatch.Draw(Game1.staminaRect, new Rectangle(btnX + btnW - 2, btnY, 2, btnH), Color.Black);
+
+                // 绘制文字（居中）
+                Vector2 textSize = Game1.smallFont.MeasureString(bindButtonText);
+                Vector2 textPos = new Vector2(
+                    btnX + (btnW - textSize.X) / 2,
+                    btnY + (btnH - textSize.Y) / 2
+                );
+                e.SpriteBatch.DrawString(Game1.smallFont, bindButtonText, textPos, Color.White);
+            }
+            else
+            {
+                bindButtonBounds = Rectangle.Empty;
+            }
         }
 
         // ================== 存档持久化 ==================
@@ -195,6 +245,7 @@ namespace AutoDepositChest
         private void OnMenuChanged(object sender, MenuChangedEventArgs e)
         {
             currentOpenChest = null;
+            bindButtonBounds = Rectangle.Empty; // 重置按钮
 
             if (e.NewMenu is ItemGrabMenu grabMenu)
             {
@@ -244,6 +295,23 @@ namespace AutoDepositChest
 
         private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
         {
+            // 1. 优先处理自定义 UI 按钮的点击
+            if (e.Button == SButton.MouseLeft || e.Button == SButton.ControllerA)
+            {
+                if (bindButtonBounds != Rectangle.Empty && currentOpenChest != null)
+                {
+                    var cursor = e.Cursor.ScreenPixels;
+                    if (cursor.X >= bindButtonBounds.X && cursor.X <= bindButtonBounds.Right &&
+                        cursor.Y >= bindButtonBounds.Y && cursor.Y <= bindButtonBounds.Bottom)
+                    {
+                        ToggleBindSpecificChest(currentOpenChest);
+                        e.SuppressButton(); // 阻止点击穿透
+                        return;
+                    }
+                }
+            }
+
+            // 2. 原有逻辑
             if (e.Button == toggleKey)
             {
                 autoDepositEnabled = !autoDepositEnabled;
@@ -414,7 +482,6 @@ namespace AutoDepositChest
 
             if (boundChests.Count == 0) return;
 
-            // 允许晶球/古物宝藏等界面打开时继续存入
             bool isGeodeMenu = Game1.activeClickableMenu is StardewValley.Menus.GeodeMenu;
             if (Game1.activeClickableMenu != null && !isGeodeMenu) return;
 
@@ -425,7 +492,6 @@ namespace AutoDepositChest
                 if (item == null) continue;
                 if (item is Tool) continue;
 
-                // 关键：晶球/古物宝藏等界面打开时，未开完的“盲盒”物品不传送
                 if (isGeodeMenu && IsGeodeItem(item))
                 {
                     continue;
@@ -472,7 +538,6 @@ namespace AutoDepositChest
 
         // ================== 辅助 ==================
 
-        /// <summary>判断物品是否是未开完的“盲盒”（晶球、古物宝藏等）。</summary>
         private bool IsGeodeItem(Item item)
         {
             return item != null && GeodeIds.Contains(item.ItemId);
