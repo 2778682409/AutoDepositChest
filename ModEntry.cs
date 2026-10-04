@@ -17,13 +17,17 @@ namespace AutoDepositChest
     {
         private const string SaveDataKey = "bound-chests";
 
-        // 晶球物品 ID，未开完的晶球不传送
+        // 所有可以交给克林特砸开的物品 ID
         private static readonly HashSet<string> GeodeIds = new HashSet<string>
         {
-            "535", // Geode 晶球
-            "536", // Frozen Geode 冰封晶球
-            "537", // Magma Geode 熔岩晶球
-            "749"  // Omni Geode 万象晶球
+            "535",              // Geode 晶球
+            "536",              // Frozen Geode 冰封晶球
+            "537",              // Magma Geode 岩浆晶球
+            "749",              // Omni Geode 万象晶球
+            "842",              // Artifact Trove 古物宝藏
+            "791",              // Golden Coconut 金色椰子
+            "MysteryBox",       // 谜之盒
+            "GoldenMysteryBox"  // 金色谜之盒
         };
 
         private List<Chest> boundChests = new List<Chest>();
@@ -410,7 +414,7 @@ namespace AutoDepositChest
 
             if (boundChests.Count == 0) return;
 
-            // 允许晶球界面打开时继续存入
+            // 允许晶球/古物宝藏等界面打开时继续存入
             bool isGeodeMenu = Game1.activeClickableMenu is StardewValley.Menus.GeodeMenu;
             if (Game1.activeClickableMenu != null && !isGeodeMenu) return;
 
@@ -421,7 +425,7 @@ namespace AutoDepositChest
                 if (item == null) continue;
                 if (item is Tool) continue;
 
-                // 关键：晶球界面打开时，未开完的晶球不传送
+                // 关键：晶球/古物宝藏等界面打开时，未开完的“盲盒”物品不传送
                 if (isGeodeMenu && IsGeodeItem(item))
                 {
                     continue;
@@ -468,7 +472,7 @@ namespace AutoDepositChest
 
         // ================== 辅助 ==================
 
-        /// <summary>判断物品是否是晶球本身（未开完的晶球）。</summary>
+        /// <summary>判断物品是否是未开完的“盲盒”（晶球、古物宝藏等）。</summary>
         private bool IsGeodeItem(Item item)
         {
             return item != null && GeodeIds.Contains(item.ItemId);
