@@ -70,7 +70,7 @@ namespace AutoDepositChest
             helper.Events.Input.ButtonReleased += OnButtonReleased;
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
             helper.Events.Display.MenuChanged += OnMenuChanged;
-            helper.Events.Display.RenderedActiveMenu += OnRenderedActiveMenu; // 新增：绘制自定义按钮
+            helper.Events.Display.RenderedActiveMenu += OnRenderedActiveMenu; // 绘制自定义按钮
             helper.Events.GameLoop.GameLaunched += OnGameLaunched;
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
             helper.Events.GameLoop.Saving += OnSaving;
@@ -84,7 +84,6 @@ namespace AutoDepositChest
             if (Game1.activeClickableMenu is ItemGrabMenu grabMenu && currentOpenChest != null)
             {
                 // 计算按钮位置：位于左上角箱子图标的下方
-                // 原版箱子图标大约在 xPositionOnScreen + 32, yPositionOnScreen + 32
                 int btnX = grabMenu.xPositionOnScreen + 16;
                 int btnY = grabMenu.yPositionOnScreen + 80;
                 int btnW = 120;
@@ -94,8 +93,8 @@ namespace AutoDepositChest
                 bindButtonText = boundChests.Contains(currentOpenChest) ? "已绑定" : "未绑定";
 
                 // 绘制背景颜色（已绑定绿色，未绑定红色）
-                Color bgColor = boundChests.Contains(currentOpenChest) 
-                    ? Color.Green * 0.8f 
+                Color bgColor = boundChests.Contains(currentOpenChest)
+                    ? Color.Green * 0.8f
                     : Color.Red * 0.8f;
 
                 e.SpriteBatch.Draw(Game1.staminaRect, bindButtonBounds, bgColor);
@@ -305,7 +304,7 @@ namespace AutoDepositChest
                         cursor.Y >= bindButtonBounds.Y && cursor.Y <= bindButtonBounds.Bottom)
                     {
                         ToggleBindSpecificChest(currentOpenChest);
-                        e.SuppressButton(); // 阻止点击穿透
+                        e.Suppress(); // 修复：阻止点击穿透
                         return;
                     }
                 }
