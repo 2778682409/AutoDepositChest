@@ -41,7 +41,7 @@ namespace AutoDepositChest
 
         private bool autoDepositEnabled = true;
 
-        // 当前打开的箱子以及按钮位置
+        // 供 Patch 访问的公开属性
         public Chest CurrentOpenChest { get; private set; } = null;
         public Rectangle BindButtonBounds { get; private set; } = Rectangle.Empty;
 
@@ -75,34 +75,63 @@ namespace AutoDepositChest
             helper.Events.GameLoop.Saving += OnSaving;
         }
 
-        // ================== 绘制自定义按钮 ==================
+        // ================== 绘制适应 UI 缩放的自定义按钮 ==================
         private void OnRenderedActiveMenu(object sender, RenderedActiveMenuEventArgs e)
         {
             if (Game1.activeClickableMenu is ItemGrabMenu grabMenu && CurrentOpenChest != null)
             {
-                // 按钮位置：位于左上角箱子图标下方
-                int btnX = grabMenu.xPositionOnScreen + 16;
-                int btnY = grabMenu.yPositionOnScreen + 80;
-                int btnW = 120;
-                int btnH = 40;
+                // 获取当前 UI 缩放系数（一般为 0.75, 1.0, 1.25, 1.5, 2.0 等）
+                float uiScale = Game1.options.uiScale;
+                if (uiScale <= 0) uiScale = 1f;
+
+                // 基准坐标和尺寸（基于 UI Scale = 1.0 时的设计）
+                int baseOffsetX = 90;
+                int baseOffsetY = 16;
+                int baseWidth = 120;
+                int baseHeight = 44;
+
+                // 根据缩放比例计算按钮的实际屏幕位置和大小
+                int btnX = grabMenu.xPositionOnScreen + (int)(baseOffsetX * uiScale);
+                int btnY = grabMenu.yPositionOnScreen + (int)(baseOffsetY * uiScale);
+                int btnW = (int)(baseWidth * uiScale);
+                int btnH = (int)(baseHeight * uiScale);
 
                 BindButtonBounds = new Rectangle(btnX, btnY, btnW, btnH);
-                string bindButtonText = boundChests.Contains(CurrentOpenChest) ? "已绑定" : "未绑定";
 
-                // 颜色：已绑定绿色，未绑定红色
-                Color bgColor = boundChests.Contains(CurrentOpenChest) ? Color.Green * 0.8f : Color.Red * 0.8f;
+                bool isBound = boundChests.Contains(CurrentOpenChest);
+                string bindButtonText = isBound ? "已绑定" : "未绑定";
+                Color textColor = isBound ? Color.Green : Color.Red;
 
-                // 绘制背景和边框
-                e.SpriteBatch.Draw(Game1.staminaRect, BindButtonBounds, bgColor);
-                e.SpriteBatch.Draw(Game1.staminaRect, new Rectangle(btnX, btnY, btnW, 2), Color.Black);
-                e.SpriteBatch.Draw(Game1.staminaRect, new Rectangle(btnX, btnY + btnH - 2, btnW, 2), Color.Black);
-                e.SpriteBatch.Draw(Game1.staminaRect, new Rectangle(btnX, btnY, 2, btnH), Color.Black);
-                e.SpriteBatch.Draw(Game1.staminaRect, new Rectangle(btnX + btnW - 2, btnY, 2, btnH), Color.Black);
+                // 绘制原版风格的菜单框背景
+                IClickableMenu.drawTextureBox(
+                    e.SpriteBatch,
+                    Game1.menuTexture,
+                    new Rectangle(0, 256, 60, 60),
+                    btnX, btnY, btnW, btnH,
+                    Color.White,
+                    1f,
+                    true
+                );
 
-                // 绘制文字
-                Vector2 textSize = Game1.smallFont.MeasureString(bindButtonText);
-                Vector2 textPos = new Vector2(btnX + (btnW - textSize.X) / 2, btnY + (btnH - textSize.Y) / 2);
-                e.SpriteBatch.DrawString(Game1.smallFont, bindButtonText, textPos, Color.White);
+                // 绘制文字（先计算缩放后的文字尺寸，再居中）
+                Vector2 textSize = Game1.smallFont.MeasureString(bindButtonText) * uiScale;
+                Vector2 textPos = new Vector2(
+                    btnX + (btnW - textSize.X) / 2,
+                    btnY + (btnH - textSize.Y) / 2
+                );
+
+                // 使用带缩放的 DrawString 重载
+                e.SpriteBatch.DrawString(
+                    Game1.smallFont,
+                    bindButtonText,
+                    textPos,
+                    textColor,
+                    0f,
+                    Vector2.Zero,
+                    uiScale,
+                    SpriteEffects.None,
+                    0.5f
+                );
             }
             else
             {
@@ -241,6 +270,7 @@ namespace AutoDepositChest
                 return;
             }
 
+            // 如果打开了箱子界面，按下绑定键也绑定当前箱子
             if (CurrentOpenChest != null && (e.Button == singleKey || e.Button == batchKey))
             {
                 ToggleBindSpecificChest(CurrentOpenChest);
